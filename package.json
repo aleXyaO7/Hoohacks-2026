@@ -1,0 +1,33 @@
+{
+  "name": "hoohacks-2026",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint ."
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "Plaid Sandbox dashboard prototype",
+  "dependencies": {
+    "next": "^16.2.1",
+    "plaid": "^41.4.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "react-plaid-link": "^4.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "autoprefixer": "^10.4.27",
+    "eslint": "^9.39.4",
+    "eslint-config-next": "^16.2.1",
+    "postcss": "^8.5.8",
+    "tailwindcss": "^4.2.2",
+    "typescript": "^5.9.3"
+  }
+}
