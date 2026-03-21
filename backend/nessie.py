@@ -33,10 +33,10 @@ def add_customer(first_name, last_name):
     response = query(url, data)
     if response.status_code == 201:
         print(f'[Debug] Customer created: {response.json()['objectCreated']['_id']}')
-        return True
+        return response.json()['objectCreated']['_id']
     else:
         print(f'[Debug] Failed to create customer: {first_name} {last_name} {[r for r in response]}')
-        return False
+        return ''
     
 def get_customers():
     url = 'http://api.nessieisreal.com/customers'
@@ -56,10 +56,10 @@ def add_account(id, account_type, rewards=0, balance=0):
     response = query(url, data)
     if response.status_code == 201:
         print(f'[Debug] Account created: {response.json()['objectCreated']['_id']}')
-        return True
+        return response.json()['objectCreated']['_id']
     else:
         print(f'[Debug] Failed to create account: {id}')
-        return False
+        return ''
     
 def delete_account(id):
     url = 'http://api.nessieisreal.com/accounts/{}'.format(id)
