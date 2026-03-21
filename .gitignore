@@ -52,3 +52,4 @@ yarn-error.log*
 pnpm-debug.log*
 
 *test*
+merchants.txt
