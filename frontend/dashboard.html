@@ -9,12 +9,19 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <script>
     tailwind.config = {
-      theme: {
-        extend: { fontFamily: { sans: ["Inter", "system-ui", "sans-serif"] } }
-      }
+      theme: { extend: { fontFamily: { sans: ["Inter", "system-ui", "sans-serif"] } } }
     };
   </script>
   <style>
+    /* Risk gauge arc */
+    .gauge-bg { stroke: #e5e7eb; }
+    .gauge-fill { transition: stroke-dashoffset 1.2s ease-out; stroke-linecap: round; }
+
+    /* Reasoning timeline animations */
+    .trace-step { opacity: 0; transform: translateY(12px); transition: opacity 0.4s ease, transform 0.4s ease; }
+    .trace-step.visible { opacity: 1; transform: translateY(0); }
+
+    /* Chat */
     .chat-messages { scrollbar-width: thin; }
     .chat-messages::-webkit-scrollbar { width: 6px; }
     .chat-messages::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
@@ -22,6 +29,10 @@
     .typing-dot { animation: pulse-dot 1.4s infinite; }
     .typing-dot:nth-child(2) { animation-delay: 0.2s; }
     .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+    /* Detail expand */
+    .detail-body { max-height: 0; overflow: hidden; transition: max-height 0.3s ease; }
+    .detail-body.open { max-height: 600px; }
   </style>
 </head>
 <body class="bg-gray-50 font-sans text-gray-900 min-h-screen">
@@ -35,8 +46,12 @@
       </div>
       <div class="flex gap-3">
         <button id="sync-btn" onclick="triggerPipeline()"
-          class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition">
-          Sync &amp; Analyze
+          class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition flex items-center gap-2">
+          <svg id="sync-icon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
+          <span id="sync-text">Sync &amp; Analyze</span>
         </button>
         <button onclick="logout()"
           class="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 transition">
@@ -48,61 +63,83 @@
 
   <main class="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
 
-    <!-- Row 1: Balance + Risk -->
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <!-- Row 1: Two columns — Transactions | Risk Gauge + Reasoning -->
+    <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
 
-      <!-- Balance Card -->
-      <div class="bg-white rounded-xl border border-gray-200 p-6">
-        <p class="text-sm font-medium text-gray-500 mb-1">Total Balance</p>
-        <p id="balance-amount" class="text-3xl font-bold text-gray-900">--</p>
-        <div id="accounts-list" class="mt-4 space-y-2"></div>
+      <!-- LEFT: Transactions (2/5 width) -->
+      <div class="lg:col-span-2 bg-white rounded-xl border border-gray-200 p-6 flex flex-col">
+        <div class="flex items-center justify-between mb-4">
+          <p class="text-sm font-medium text-gray-500">Transactions</p>
+          <span id="balance-pill" class="text-sm font-semibold bg-gray-100 px-3 py-1 rounded-full">--</span>
+        </div>
+        <div id="transactions-list" class="space-y-1 overflow-y-auto flex-1" style="max-height: 540px;"></div>
       </div>
 
-      <!-- Risk Card -->
-      <div id="risk-card" class="bg-white rounded-xl border border-gray-200 p-6">
-        <div class="flex items-center justify-between mb-3">
-          <p class="text-sm font-medium text-gray-500">Risk Assessment</p>
-          <span id="risk-badge" class="px-2.5 py-0.5 rounded-full text-xs font-semibold">--</span>
+      <!-- RIGHT: Risk Gauge + Agent Reasoning (3/5 width) -->
+      <div class="lg:col-span-3 space-y-6">
+
+        <!-- Risk Gauge -->
+        <div class="bg-white rounded-xl border border-gray-200 p-6">
+          <div class="flex items-start justify-between">
+            <div>
+              <p class="text-sm font-medium text-gray-500 mb-1">Risk Assessment</p>
+              <div class="flex items-baseline gap-2">
+                <span id="risk-score" class="text-4xl font-bold tabular-nums">--</span>
+                <span class="text-gray-400 text-sm">/ 100</span>
+                <span id="risk-badge" class="ml-2 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-500">--</span>
+              </div>
+            </div>
+            <!-- SVG Gauge -->
+            <div class="relative w-28 h-16 flex-shrink-0">
+              <svg viewBox="0 0 120 68" class="w-full h-full">
+                <path d="M10 60 A50 50 0 0 1 110 60" fill="none" class="gauge-bg" stroke-width="10"/>
+                <path id="gauge-arc" d="M10 60 A50 50 0 0 1 110 60" fill="none"
+                  stroke="#d1d5db" stroke-width="10"
+                  stroke-dasharray="157" stroke-dashoffset="157"
+                  class="gauge-fill"/>
+              </svg>
+            </div>
+          </div>
+          <div id="risk-factors" class="mt-4 space-y-1.5"></div>
         </div>
-        <div class="flex items-baseline gap-2 mb-4">
-          <span id="risk-score" class="text-3xl font-bold">--</span>
-          <span class="text-gray-400 text-sm">/ 100</span>
+
+        <!-- Agent Reasoning Timeline -->
+        <div class="bg-white rounded-xl border border-gray-200 p-6">
+          <p class="text-sm font-medium text-gray-500 mb-4">Agent Reasoning Loop</p>
+          <div id="reasoning-timeline" class="space-y-3">
+            <p class="text-sm text-gray-400">Click "Sync &amp; Analyze" to run the agent pipeline.</p>
+          </div>
         </div>
-        <div id="risk-factors" class="space-y-2"></div>
-        <div id="risk-recommendations" class="mt-4 space-y-1.5"></div>
+
       </div>
     </div>
 
-    <!-- Row 2: Transactions + Alerts -->
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <!-- Row 2: Chat + Chat Reasoning -->
+    <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
 
-      <!-- Transactions -->
-      <div class="bg-white rounded-xl border border-gray-200 p-6">
-        <p class="text-sm font-medium text-gray-500 mb-4">Recent Transactions</p>
-        <div id="transactions-list" class="space-y-3 max-h-80 overflow-y-auto"></div>
+      <!-- Chat (left, 2/5) -->
+      <div class="lg:col-span-2 bg-white rounded-xl border border-gray-200 p-6 flex flex-col">
+        <p class="text-sm font-medium text-gray-500 mb-4">Chat with your Financial Copilot</p>
+        <div id="chat-messages" class="chat-messages space-y-3 flex-1 overflow-y-auto mb-4 p-2" style="max-height: 360px;"></div>
+        <form id="chat-form" class="flex gap-3">
+          <input id="chat-input" type="text"
+            placeholder='"Can I afford dinner?", "What should I cut?"'
+            class="flex-1 border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+          <button type="submit"
+            class="bg-blue-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-700 transition whitespace-nowrap">
+            Send
+          </button>
+        </form>
       </div>
 
-      <!-- Alerts -->
-      <div class="bg-white rounded-xl border border-gray-200 p-6">
-        <p class="text-sm font-medium text-gray-500 mb-4">Recent Alerts</p>
-        <div id="alerts-list" class="space-y-3 max-h-80 overflow-y-auto"></div>
+      <!-- Chat Reasoning (right, 3/5) -->
+      <div class="lg:col-span-3 bg-white rounded-xl border border-gray-200 p-6">
+        <p class="text-sm font-medium text-gray-500 mb-4">Chat Reasoning Loop</p>
+        <div id="chat-reasoning" class="space-y-3 max-h-[420px] overflow-y-auto">
+          <p class="text-sm text-gray-400">Send a message to see the agents reason through your question.</p>
+        </div>
       </div>
-    </div>
 
-    <!-- Row 3: Chat -->
-    <div class="bg-white rounded-xl border border-gray-200 p-6">
-      <p class="text-sm font-medium text-gray-500 mb-4">Chat with your Financial Copilot</p>
-
-      <div id="chat-messages" class="chat-messages space-y-3 max-h-96 overflow-y-auto mb-4 p-2"></div>
-
-      <form id="chat-form" class="flex gap-3">
-        <input id="chat-input" type="text" placeholder="Ask anything — &quot;Can I afford dinner?&quot;, &quot;What should I cut?&quot;"
-          class="flex-1 border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
-        <button type="submit"
-          class="bg-blue-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-700 transition whitespace-nowrap">
-          Send
-        </button>
-      </form>
     </div>
 
   </main>
