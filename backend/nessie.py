@@ -32,10 +32,10 @@ def add_customer(first_name, last_name):
     }
     response = query(url, data)
     if response.status_code == 201:
-        print(f'[Debug] Customer created: {response.json()['objectCreated']['_id']}')
+        print(f'[debug] Customer created: {response.json()['objectCreated']['_id']}')
         return response.json()['objectCreated']['_id']
     else:
-        print(f'[Debug] Failed to create customer: {first_name} {last_name} {[r for r in response]}')
+        print(f'[debug] Failed to create customer: {first_name} {last_name} {[r for r in response]}')
         return ''
     
 def get_customers():
@@ -55,29 +55,29 @@ def add_account(id, account_type, rewards=0, balance=0):
     }
     response = query(url, data)
     if response.status_code == 201:
-        print(f'[Debug] Account created: {response.json()['objectCreated']['_id']}')
+        print(f'[debug] Account created: {response.json()['objectCreated']['_id']}')
         return response.json()['objectCreated']['_id']
     else:
-        print(f'[Debug] Failed to create account: {id}')
+        print(f'[debug] Failed to create account: {id}')
         return ''
     
 def delete_account(id):
     url = 'http://api.nessieisreal.com/accounts/{}'.format(id)
     response = query(url, {})
     if response.status_code == 500:
-        print(f'[Debug] Account deleted: {id}')
+        print(f'[debug] Account deleted: {id}')
         return True
     else:
-        print(f'[Debug] Failed to create account: {id}')
+        print(f'[debug] Failed to create account: {id}')
         return False
     
 def get_transactions(id):
     url = 'http://api.nessieisreal.com/accounts/{}/purchases'.format(id)
     response = query(url, {})
     if response.status_code == 200:
-        print('[Debug] Queried transactions')
+        print('[debug] Queried transactions')
     else:
-        print(f'[Debug] Failed to query transactions {[r for r in response]}')
+        print(f'[debug] Failed to query transactions {[r for r in response]}')
     return response.json()
     
 def add_transaction(id, merchant_id, description, amount, date):
@@ -92,9 +92,9 @@ def add_transaction(id, merchant_id, description, amount, date):
     }
     response = query(url, data)
     if response.status_code == 201:
-        print('[Debug] Created transaction')
+        print('[debug] Created transaction')
         return True
     else:
-        print(f'[Debug] Failed to create transaction {[r for r in response]}')
+        print(f'[debug] Failed to create transaction {[r for r in response]}')
         return False
 
