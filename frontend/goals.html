@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Financial Goals</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="container">
+    <section class="card">
+      <h1>Financial Goals</h1>
+      <p class="subtitle">Tell us about your current financial situation.</p>
+
+      <p id="greeting" class="message"></p>
+
+      <form id="goals-form" class="form">
+        <label for="monthlyIncome">Monthly Income ($)</label>
+        <input id="monthlyIncome" name="monthlyIncome" type="number" min="0" step="0.01" required />
+
+        <label for="monthlyExpenditures">Required Monthly Expenditures ($)</label>
+        <input id="monthlyExpenditures" name="monthlyExpenditures" type="number" min="0" step="0.01" required />
+
+        <label for="savingsGoal">Savings Goal ($)</label>
+        <input id="savingsGoal" name="savingsGoal" type="number" min="0" step="0.01" required />
+
+        <label for="debtAmount">Total Debt ($)</label>
+        <input id="debtAmount" name="debtAmount" type="number" min="0" step="0.01" required />
+
+        <label for="currentSavings">Current Savings Account Balance ($)</label>
+        <input id="currentSavings" name="currentSavings" type="number" min="0" step="0.01" required />
+
+        <button type="submit">Save Goals</button>
+      </form>
+
+      <p id="goals-message" class="message" aria-live="polite"></p>
+    </section>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
