@@ -6,11 +6,44 @@ load_dotenv()
 
 def query(url, data):
     api_key = os.getenv('NESSIE_API_KEY')
+    if not data:
+        return requests.get( 
+            url + '?key={}'.format(api_key),
+            headers={'content-type':'application/json'},
+        )
     return requests.post( 
         url + '?key={}'.format(api_key), 
         data=json.dumps(data),
         headers={'content-type':'application/json'},
     )
+
+def add_customer(first_name, last_name):
+    url = 'http://api.nessieisreal.com/customers'
+    data = {
+        "first_name" : first_name,
+        "last_name" : last_name,
+        "address" : {
+            "street_number" : "string",
+            "street_name" : "string",
+            "city" : "string",
+            "state" : "VA",
+            "zip" : "10000"
+        }
+    }
+    response = query(url, data)
+    if response.status_code == 201:
+        print(f'[Debug] Customer created: {response.json()['objectCreated']['_id']}')
+        return True
+    else:
+        print(f'[Debug] Failed to create customer: {first_name} {last_name} {[r for r in response]}')
+        return False
+    
+def get_customers():
+    url = 'http://api.nessieisreal.com/customers'
+    response = query(url, {})
+    for i in response:
+        print(i)
+    return response
 
 def add_account(id, account_type, rewards=0, balance=0):
     url = 'http://api.nessieisreal.com/customers/{}/accounts'.format(id)
@@ -18,51 +51,50 @@ def add_account(id, account_type, rewards=0, balance=0):
         "type" : account_type,
         "nickname" : id,
         "rewards" : rewards,
-        "balance" : balance,	
-	    "account_number": id
+        "balance" : balance
     }
     response = query(url, data)
     if response.status_code == 201:
-        print('[Debug] Account created')
+        print(f'[Debug] Account created: {response.json()['objectCreated']['_id']}')
         return True
     else:
-        print('[Debug] Failed to create account')
+        print(f'[Debug] Failed to create account: {id}')
         return False
     
 def delete_account(id):
     url = 'http://api.nessieisreal.com/accounts/{}'.format(id)
     response = query(url, {})
     if response.status_code == 500:
-        print('[Debug] Account created')
+        print(f'[Debug] Account deleted: {id}')
+        return True
     else:
-        print('[Debug] Failed to create account')
-    return response
+        print(f'[Debug] Failed to create account: {id}')
+        return False
     
 def get_transactions(id):
     url = 'http://api.nessieisreal.com/accounts/{}/purchases'.format(id)
     response = query(url, {})
-    if response.status_code == 500:
+    if response.status_code == 200:
         print('[Debug] Queried transactions')
-        return True
     else:
-        print('[Debug] Failed to query transactions')
-        return False
+        print(f'[Debug] Failed to query transactions {[r for r in response]}')
+    return response.json()
     
-def create_transaction(id, merchant_id, description, amount, date):
+def add_transaction(id, merchant_id, description, amount, date):
     url = 'http://api.nessieisreal.com/accounts/{}/purchases'.format(id)
     data = {
         "merchant_id" : merchant_id,
         "medium" : "balance",
         "purchase_date" : date,
         "amount" : amount,
-        "status" : "complete",
+        "status" : "completed",
         "description" : description
     }
     response = query(url, data)
-    if response.status_code == 500:
+    if response.status_code == 201:
         print('[Debug] Created transaction')
         return True
     else:
-        print('[Debug] Failed to create transaction')
+        print(f'[Debug] Failed to create transaction {[r for r in response]}')
         return False
 
