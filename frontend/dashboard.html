@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Financial Copilot</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: { fontFamily: { sans: ["Inter", "system-ui", "sans-serif"] } }
+      }
+    };
+  </script>
+  <style>
+    .chat-messages { scrollbar-width: thin; }
+    .chat-messages::-webkit-scrollbar { width: 6px; }
+    .chat-messages::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
+    @keyframes pulse-dot { 0%, 80%, 100% { opacity: 0.3; } 40% { opacity: 1; } }
+    .typing-dot { animation: pulse-dot 1.4s infinite; }
+    .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+    .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+  </style>
+</head>
+<body class="bg-gray-50 font-sans text-gray-900 min-h-screen">
+
+  <!-- Header -->
+  <header class="bg-white border-b border-gray-200 sticky top-0 z-10">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
+      <div>
+        <h1 class="text-xl font-bold text-gray-900">Financial Copilot</h1>
+        <p id="header-greeting" class="text-sm text-gray-500"></p>
+      </div>
+      <div class="flex gap-3">
+        <button id="sync-btn" onclick="triggerPipeline()"
+          class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition">
+          Sync &amp; Analyze
+        </button>
+        <button onclick="logout()"
+          class="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 transition">
+          Sign Out
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
+
+    <!-- Row 1: Balance + Risk -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+      <!-- Balance Card -->
+      <div class="bg-white rounded-xl border border-gray-200 p-6">
+        <p class="text-sm font-medium text-gray-500 mb-1">Total Balance</p>
+        <p id="balance-amount" class="text-3xl font-bold text-gray-900">--</p>
+        <div id="accounts-list" class="mt-4 space-y-2"></div>
+      </div>
+
+      <!-- Risk Card -->
+      <div id="risk-card" class="bg-white rounded-xl border border-gray-200 p-6">
+        <div class="flex items-center justify-between mb-3">
+          <p class="text-sm font-medium text-gray-500">Risk Assessment</p>
+          <span id="risk-badge" class="px-2.5 py-0.5 rounded-full text-xs font-semibold">--</span>
+        </div>
+        <div class="flex items-baseline gap-2 mb-4">
+          <span id="risk-score" class="text-3xl font-bold">--</span>
+          <span class="text-gray-400 text-sm">/ 100</span>
+        </div>
+        <div id="risk-factors" class="space-y-2"></div>
+        <div id="risk-recommendations" class="mt-4 space-y-1.5"></div>
+      </div>
+    </div>
+
+    <!-- Row 2: Transactions + Alerts -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+      <!-- Transactions -->
+      <div class="bg-white rounded-xl border border-gray-200 p-6">
+        <p class="text-sm font-medium text-gray-500 mb-4">Recent Transactions</p>
+        <div id="transactions-list" class="space-y-3 max-h-80 overflow-y-auto"></div>
+      </div>
+
+      <!-- Alerts -->
+      <div class="bg-white rounded-xl border border-gray-200 p-6">
+        <p class="text-sm font-medium text-gray-500 mb-4">Recent Alerts</p>
+        <div id="alerts-list" class="space-y-3 max-h-80 overflow-y-auto"></div>
+      </div>
+    </div>
+
+    <!-- Row 3: Chat -->
+    <div class="bg-white rounded-xl border border-gray-200 p-6">
+      <p class="text-sm font-medium text-gray-500 mb-4">Chat with your Financial Copilot</p>
+
+      <div id="chat-messages" class="chat-messages space-y-3 max-h-96 overflow-y-auto mb-4 p-2"></div>
+
+      <form id="chat-form" class="flex gap-3">
+        <input id="chat-input" type="text" placeholder="Ask anything — &quot;Can I afford dinner?&quot;, &quot;What should I cut?&quot;"
+          class="flex-1 border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+        <button type="submit"
+          class="bg-blue-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-700 transition whitespace-nowrap">
+          Send
+        </button>
+      </form>
+    </div>
+
+  </main>
+
+  <script src="dashboard.js"></script>
+</body>
+</html>
