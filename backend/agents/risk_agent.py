@@ -146,38 +146,47 @@ def _score_balance(total_balance, monthly_spending, factors, recommendations):
 
 def _score_budgets(sb, account_ids, budgets, month_start, factors, recommendations):
     if not budgets:
-        return 0  # no budgets set, can't evaluate
+        return 0
 
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     over_count = 0
     total_budgets = 0
 
     for budget in budgets:
         category = budget["category"]
-        monthly_limit = float(budget.get("monthly_limit") or 0)
-        if monthly_limit <= 0:
+        limit_amount = float(budget.get("amount") or 0)
+        if limit_amount <= 0:
             continue
+
+        start = budget.get("start_date") or month_start.strftime("%Y-%m-%d")
+        end = budget.get("end_date") or today
+
+        if today < start or today > end:
+            continue
+
         total_budgets += 1
 
-        spent = _get_category_spending(sb, account_ids, category, month_start.strftime("%Y-%m-%d"))
+        budget_account_ids = [budget["account_id"]] if budget.get("account_id") else account_ids
+        spent = _get_category_spending(sb, budget_account_ids, category, start)
 
-        pct = (spent / monthly_limit) * 100 if monthly_limit else 0
+        pct = (spent / limit_amount) * 100
 
         if pct > 100:
             over_count += 1
-            overage = spent - monthly_limit
+            overage = spent - limit_amount
             factors.append({
                 "factor": "budget_exceeded",
                 "severity": "high",
-                "detail": f"{category}: ${spent:.2f} spent vs ${monthly_limit:.2f} limit ({pct:.0f}%)",
+                "detail": f"{category}: ${spent:.2f} spent vs ${limit_amount:.2f} limit ({pct:.0f}%) [{start} to {end}]",
             })
             recommendations.append(
-                f"You're ${overage:.2f} over your {category} budget. Try to avoid {category} spending for the rest of the month."
+                f"You're ${overage:.2f} over your {category} budget. Try to avoid {category} spending until {end}."
             )
         elif pct > 80:
             factors.append({
                 "factor": "budget_warning",
                 "severity": "medium",
-                "detail": f"{category}: ${spent:.2f} of ${monthly_limit:.2f} used ({pct:.0f}%)",
+                "detail": f"{category}: ${spent:.2f} of ${limit_amount:.2f} used ({pct:.0f}%) [{start} to {end}]",
             })
 
     if total_budgets == 0:

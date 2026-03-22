@@ -245,7 +245,7 @@ def _build_context(sb, user_id):
             for t in recent_txns
         ],
         "budgets": [
-            {"category": b["category"], "monthly_limit": b.get("monthly_limit"), "weekly_limit": b.get("weekly_limit")}
+            {"category": b["category"], "amount": b.get("amount"), "start_date": b.get("start_date"), "end_date": b.get("end_date"), "account_id": b.get("account_id")}
             for b in budgets
         ],
         "latest_risk": latest_snapshot.get("data") if latest_snapshot else None,
