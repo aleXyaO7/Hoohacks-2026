@@ -1,3 +1,6 @@
+import requests, datetime
+import numpy as np
+
 from backend.nessie import *
 from backend.agents.agent import generate
 
@@ -35,5 +38,26 @@ def analyze_transaction_categories(account_id, categories, start_date=None, end_
                 results[labels[i]]['sum'] += transactions[i]['amount']
         except Exception as e:
             print(e)
-    
     return results
+
+def compile_budget_history(account_id, category, start_date, end_date, budget_amount):
+    delta = datetime.datetime.strptime(end_date, r'%Y-%m-%d') - datetime.datetime.strptime(start_date, r'%Y-%m-%d')
+    num_days = delta.days + 1
+    history = np.zeros(num_days)
+    transaction_categories = analyze_transaction_categories(account_id, [category, 'not ' + category], start_date, end_date)
+    for transaction in transaction_categories[category]['transaction']:
+        amount = transaction['amount'] / budget_amount
+        day = (datetime.datetime.strptime(transaction['purchase_date'], r'%Y-%m-%d') - datetime.datetime.strptime(start_date, r'%Y-%m-%d')).days
+        history[day:] += amount
+    return history
+
+def compile_all_similar_budgets(account_id, category, start_date, end_date, budget_amount):
+    delta = datetime.datetime.strptime(end_date, r'%Y-%m-%d') - datetime.datetime.strptime(start_date, r'%Y-%m-%d')
+    num_days = delta.days + 1
+    history = np.zeros(num_days)
+    transaction_categories = analyze_transaction_categories(account_id, [category, 'not ' + category], start_date, end_date)
+    for transaction in transaction_categories[category]['transaction']:
+        amount = transaction['amount'] / budget_amount
+        day = (datetime.datetime.strptime(transaction['purchase_date'], r'%Y-%m-%d') - datetime.datetime.strptime(start_date, r'%Y-%m-%d')).days
+        history[day:] += amount
+    return history
