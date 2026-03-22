@@ -6,400 +6,391 @@ This document provides guidance for Claude (or any LLM agent) working within thi
 
 ---
 
-## 🧠 System Overview
+## System Overview
 
-This project is an AI-powered financial copilot that:
+An AI-powered financial copilot that:
 
-* Monitors user financial data (via Plaid Sandbox or demo data)
-* Detects risks and opportunities
-* Sends real-time SMS alerts
-* Provides conversational financial guidance
-* Explains reasoning transparently via a web dashboard
+* Monitors user financial data via the **Nessie API** (mock banking backend)
+* Runs a multi-agent reasoning pipeline to detect risks and opportunities
+* Provides conversational financial guidance through a web dashboard chat
+* Explains its reasoning transparently — every agent step is traced and displayed
+* Evaluates decisions against the user's financial goals
+* Suggests tradeoffs and alternatives instead of just saying "no"
 
 ---
 
-## 🧰 Basic Tech Stack
+## Tech Stack (As Built)
 
 ### Frontend
 
-* **Next.js (React)** — dashboard + onboarding + assistant UI
-* **Tailwind CSS** — fast styling
-* **shadcn/ui (optional)** — clean components
+* **Static HTML / CSS / JS** — `frontend/` directory
+* **Tailwind CSS (CDN)** — styling
+* Pages: `index.html` (auth), `goals.html` (onboarding), `dashboard.html` (main app)
+* JS: `script.js` (auth/goals), `dashboard.js` (dashboard logic)
+* Served by opening HTML files directly or via any static server
 
 ### Backend
 
-* **FastAPI (Python)** — API + orchestration (recommended)
-
-  * Alternative: **Node.js (Express)**
-* Handles:
-
-  * Auth + users
-  * Plaid integration
-  * Financial state + rules engine
-  * Assistant orchestration
-  * SMS webhooks
+* **Flask (Python)** — `backend/app.py`, runs on port 5001
+* **Flask-CORS** — cross-origin access for frontend
+* `python-dotenv` — loads `.env` for API keys
 
 ### Database
 
-* **Postgres (Supabase or Neon)**
-* Tables:
-
-  * users, transactions, budgets, goals, alerts, messages, snapshots
+* **Supabase (Postgres)** — all persistent storage
+* Client: `backend/db.py` → `get_supabase()` singleton
+* Tables: `users`, `accounts`, `transactions`, `budgets`, `snapshots`, `events`, `alerts`, `messages`
 
 ### Financial Data
 
-* **Plaid Sandbox** — account linking + transactions
-
-  * Use `/transactions/sync` with cursor for incremental updates
-  * Use `/transactions/refresh` to simulate updates in Sandbox
-* **Fallback:** seeded demo personas
-
-### SMS / Notifications
-
-* **Twilio** — send/receive SMS
-
-  * Outbound alerts
-  * Inbound replies via webhook → backend → assistant
+* **Nessie API** — mock banking data (customers, accounts, purchases, deposits)
+* Client: `backend/nessie.py` → `query()`, `add_customer()`, `get_transactions()`, etc.
+* API key in `.env` as `NESSIE_API_KEY`
 
 ### AI Layer
 
-* **OpenAI API (or similar LLM)**
-* Usage:
+* **OpenAI API** — `gpt-4o-mini` for all LLM calls
+* API key in `.env` as `OPENAI_API_KEY`
+* Used by: Goals Agent, Tradeoffs Agent, Messaging Agent, Conversation Agent (Response Synthesis)
+* All financial calculations are deterministic — LLM is only used for natural language
 
-  * Turn structured analysis → natural language
-  * Answer user questions
-  * Explain recommendations
-* Keep calculations in deterministic code (not the LLM)
+### Not Yet Implemented
 
-### Hosting / DevOps
-
-* **Vercel** — frontend
-* **Render / Railway / Fly.io** — backend
-* **Supabase** — DB + optional auth
-
-### Key Services (Backend)
-
-* `financial_state` — compute balances, budgets, forecasts
-* `alert_engine` — decide when to notify users
-* `assistant_orchestrator` — handle chat + SMS interactions
-* `forecast_engine` — simple projections
-* `llm_service` — prompt + response handling
+* **Twilio SMS** (Layers 7–8) — outbound alerts and inbound SMS webhook
+* Deployment (Vercel/Render) — currently local development only
 
 ---
 
-This project is an AI-powered financial copilot that:
+## Environment Variables (`.env`)
 
-* Monitors user financial data (via Plaid Sandbox or demo data)
-* Detects risks and opportunities
-* Sends real-time SMS alerts
-* Provides conversational financial guidance
-* Explains reasoning transparently via a web dashboard
-
----
-
-## 🎯 Core Responsibilities of the Assistant
-
-When acting as the assistant, your job is to:
-
-1. Help users make better financial decisions in real time
-2. Explain reasoning clearly and concisely
-3. Provide actionable recommendations
-4. Align decisions with user goals
-5. Avoid hallucinating financial data or making unsupported claims
-
----
-
-## 📊 Available Context
-
-You will be provided structured financial context such as:
-
-* Current balance
-* Recent transactions
-* Category spending vs budget
-* Upcoming bills
-* Days until next paycheck
-* Savings goals and progress
-* Detected risks (e.g. overspending, low balance)
-
-Example:
-
-```json
-{
-  "current_balance": 250,
-  "weekly_dining_spend": 87,
-  "weekly_dining_budget": 60,
-  "days_until_payday": 5,
-  "rent_due_in_days": 4,
-  "goal_delay_days": 6,
-  "risk_level": "high"
-}
+```
+NESSIE_API_KEY=<your-nessie-key>
+SUPABASE_URL=<your-supabase-url>
+SUPABASE_KEY=<your-supabase-anon-key>
+OPENAI_API_KEY=<your-openai-key>
 ```
 
 ---
 
-## 🧾 Response Guidelines
+## Running the Project
 
-### Always:
+```bash
+# Install dependencies (use the virtual environment)
+.venv/bin/pip install -r requirements.txt
 
-* Be concise (especially for SMS responses)
-* Use plain, clear language
-* Provide a recommendation
-* Reference relevant context
+# Start the backend (port 5001, reloader disabled for clean restarts)
+python backend/app.py
 
-### Structure responses like:
+# Open the frontend
+open frontend/index.html
+```
 
-1. **Situation** (what’s happening)
-2. **Impact** (why it matters)
-3. **Recommendation** (what to do)
-
----
-
-## ✅ Good Response Example
-
-> You’re already 28% over your dining budget, and rent is due in 4 days. This purchase increases your risk of running low before payday. A safer option is to keep spending under $15 tonight or wait until your next paycheck.
-
----
-
-## ❌ Bad Response Example
-
-> You might want to consider your spending habits and think about your financial goals.
-
-(Too vague, no actionable advice)
+To restart the server cleanly:
+```bash
+# Ctrl+C in the terminal, then re-run. If port is stuck:
+lsof -ti :5001 | xargs kill -9
+python backend/app.py
+```
 
 ---
 
-## 🚨 Constraints
+## Project Structure
 
-* Do NOT fabricate numbers or financial facts
-* Do NOT give investment advice (buy/sell stocks)
-* Do NOT claim certainty about future outcomes
-* Do NOT act outside provided data
-
----
-
-## 🔄 Interaction Modes
-
-### 1. SMS Mode
-
-* Very concise (1–3 sentences)
-* Focus on immediate decision
-* No long explanations
-
-### 2. Dashboard Mode
-
-* Slightly more detailed
-* Can include reasoning breakdown
-* Can present alternatives
-
----
-
-## 🧠 Reasoning Expectations
-
-You should:
-
-* Identify key risk factors
-* Weigh tradeoffs
-* Compare options
-* Justify recommendations
-
-But:
-
-* Do NOT output raw chain-of-thought
-* Instead, summarize reasoning cleanly
-
----
-
-## 🔁 Agent Loop Behavior
-
-When applicable, follow this loop:
-
-1. Understand the user’s request
-2. Retrieve financial context
-3. Evaluate risk and constraints
-4. Generate recommendation
-5. Respond clearly
+```
+Hoohacks-2026/
+├── .env                          # API keys (not committed)
+├── requirements.txt              # Python dependencies
+├── CLAUDE.md                     # This file
+├── backend/
+│   ├── app.py                    # Flask app entry point (port 5001)
+│   ├── db.py                     # Supabase client singleton
+│   ├── nessie.py                 # Nessie API client
+│   ├── sync.py                   # Nessie → Supabase sync + event detection
+│   ├── routes/
+│   │   ├── users.py              # User CRUD, login, goals
+│   │   ├── accounts.py           # Account linking + management
+│   │   ├── transactions.py       # Transaction read/write
+│   │   ├── budgets.py            # Budget CRUD
+│   │   ├── snapshots.py          # Risk snapshots
+│   │   ├── alerts.py             # Events + alerts
+│   │   ├── messages.py           # Chat endpoint + message storage
+│   │   ├── sync.py               # Sync trigger endpoints
+│   │   └── agents.py             # Pipeline trigger endpoints
+│   └── agents/
+│       ├── risk_agent.py         # Deterministic risk scorer
+│       ├── notification_agent.py # Alert decision agent (anti-spam)
+│       ├── messaging_agent.py    # LLM message generator
+│       ├── goals_agent.py        # LLM goal alignment evaluator
+│       ├── tradeoffs_agent.py    # LLM tradeoff/alternative finder
+│       ├── conversation_agent.py # Chat pipeline orchestrator
+│       └── orchestrator.py       # Event pipeline orchestrator
+└── frontend/
+    ├── index.html                # Sign in / Create account
+    ├── goals.html                # Onboarding goals form
+    ├── script.js                 # Auth + goals JS logic
+    ├── dashboard.html            # Main dashboard layout
+    └── dashboard.js              # Dashboard logic (chat, pipeline, trace)
+```
 
 ---
 
-## 🧩 Common User Intents
+## Agent Architecture
 
-Handle these well:
+There are **two pipelines**, both fully traced for transparency.
 
-* "Can I afford this?"
-* "Why did you alert me?"
-* "What should I cut?"
-* "How much can I spend?"
-* "What happens if I keep doing this?"
+### Pipeline 1: Event Pipeline (Sync & Analyze button)
+
+Triggered by `POST /api/users/<id>/pipeline`. Runs automatically when the user clicks "Sync & Analyze."
+
+```
+Nessie API → Sync Agent → Risk Agent → Notification Agent → Messaging Agent → Dashboard
+```
+
+| Step | Agent | Type | Purpose |
+|------|-------|------|---------|
+| 1 | **Nessie Sync Agent** | Deterministic | Polls Nessie for accounts/transactions, diffs against Supabase, detects events (new_transaction, large_transaction, paycheck_received, low_balance, budget_exceeded) |
+| 2 | **Financial Risk Agent** | Deterministic | Scores financial health (0–100) based on balance runway, budget usage, cash flow, and goal alignment. Outputs risk level, factors, and recommendations |
+| 3 | **Notification Agent** | Deterministic | Decides whether to alert the user. Checks risk severity, cooldown periods (anti-spam), and actionability |
+| 4 | **Messaging Agent** | LLM (gpt-4o-mini) | Transforms the structured risk assessment into natural language alerts for SMS and dashboard |
+
+Each step is recorded in a `trace` array returned in the API response. The frontend renders this as an animated, expandable timeline.
+
+### Pipeline 2: Chat Pipeline (user sends a message)
+
+Triggered by `POST /api/users/<id>/chat`. Runs every time the user sends a chat message.
+
+```
+User Message → Context Gathering → Goals Agent → Tradeoffs Agent → Response Synthesis → Dashboard
+```
+
+| Step | Agent | Type | Purpose |
+|------|-------|------|---------|
+| 1 | **Context Gathering Agent** | Deterministic | Pulls balance, accounts, recent transactions, budgets, latest risk snapshot, and recent alerts from Supabase |
+| 2 | **Goals Agent** | LLM (gpt-4o-mini) | Evaluates the user's question/decision against their financial goals. Computes savings capacity, debt pressure, balance runway, spending ratio. LLM generates natural language assessment |
+| 3 | **Tradeoffs Agent** | LLM (gpt-4o-mini) | Analyzes spending areas for potential cuts (~40% reduction). Identifies lowest-impact adjustment. LLM generates 3 creative alternatives (what to cut, cheaper options, timing adjustments) |
+| 4 | **Response Synthesis Agent** | LLM (gpt-4o-mini) | Combines goals analysis + tradeoff suggestions + full financial context + chat history into a final coherent response |
+
+This trace is also returned and displayed in the "Chat Reasoning Loop" panel on the dashboard.
 
 ---
 
-## 🛠️ Tool Usage (if applicable)
+## Agent Details
 
-If tools are available:
+### Risk Agent (`agents/risk_agent.py`)
 
-* Use structured financial data first
-* Use LLM only for explanation
-* Prefer deterministic logic for calculations
+Fully deterministic. No LLM calls. Evaluates:
+* **Balance score** — runway in months based on spending rate
+* **Budget score** — per-category spending vs limits
+* **Cash flow score** — income vs expenses ratio
+* **Goals score** — savings progress vs target
+
+Outputs: `{ score, risk_level, factors: [{category, severity, detail}], recommendations: [str] }`
+
+### Notification Agent (`agents/notification_agent.py`)
+
+Fully deterministic. Decides whether to alert:
+* Critical risk → always alert
+* High risk → alert after 1-hour cooldown
+* Medium risk → alert after 4-hour cooldown
+* Low risk → suppress
+* Checks: has actionable recommendations, not redundant with recent alerts
+
+### Messaging Agent (`agents/messaging_agent.py`)
+
+Uses `gpt-4o-mini`. Generates:
+* SMS-style messages (2–3 sentences)
+* Dashboard-style messages (more detail)
+* Falls back to templated messages if no API key
+
+### Goals Agent (`agents/goals_agent.py`)
+
+Hybrid (deterministic math + LLM summary). Evaluates:
+* Monthly savings capacity (income − expenses)
+* Months to savings goal at current rate
+* Debt pressure
+* Balance runway (months of expenses covered)
+* Spending-to-income ratio
+
+Returns: `{ aligned: bool, goal_impacts: [...], analysis: str, summary: str }`
+
+### Tradeoffs Agent (`agents/tradeoffs_agent.py`)
+
+Hybrid (deterministic spending analysis + LLM alternatives). Provides:
+* Top 5 spending areas ranked by amount
+* Suggested 40% cut for each area with dollar amounts
+* Lowest-impact adjustment (smallest meaningful cut)
+* 3 LLM-generated alternatives: what to cut, cheaper options, timing changes
+
+Returns: `{ cuts: [...], lowest_impact: str, alternatives: [str], summary: str }`
+
+### Conversation Agent (`agents/conversation_agent.py`)
+
+Orchestrates the chat pipeline. For each user message:
+1. Builds full financial context from Supabase
+2. Runs Goals Agent with the context + user message
+3. Runs Tradeoffs Agent with the context + user message
+4. Synthesizes a final response using all agent outputs + chat history
+5. Stores both user message and assistant response in Supabase
+6. Returns response + full trace array
+
+### Orchestrator (`agents/orchestrator.py`)
+
+Orchestrates the event pipeline. For each sync trigger:
+1. Runs Nessie Sync to detect new events
+2. Runs Risk Agent for full assessment
+3. Runs Notification Agent to decide on alerting
+4. If alert-worthy, runs Messaging Agent for natural language
+5. Stores snapshot + alert records in Supabase
+6. Returns all results + full trace array
 
 ---
 
-## 🎯 Tone
+## API Endpoints
+
+### Users
+* `POST /api/users` — Create user (creates Nessie customer + default account + Supabase record)
+* `POST /api/users/login` — Login by first + last name
+* `GET /api/users/<id>` — Get user
+* `PUT /api/users/<id>/goals` — Set financial goals
+
+### Accounts
+* `POST /api/users/<id>/accounts` — Link new account (creates in Nessie + Supabase)
+* `GET /api/users/<id>/accounts` — List accounts
+
+### Transactions
+* `GET /api/accounts/<id>/transactions` — List transactions for account
+* `POST /api/accounts/<id>/transactions` — Upsert transactions
+* `GET /api/users/<id>/transactions` — All transactions for user
+
+### Budgets
+* `POST /api/users/<id>/budgets` — Create/upsert budget
+* `GET /api/users/<id>/budgets` — List budgets
+* `DELETE /api/users/<id>/budgets/<category>` — Delete budget
+
+### Snapshots
+* `POST /api/users/<id>/snapshots` — Create snapshot
+* `GET /api/users/<id>/snapshots/latest` — Latest snapshot
+* `GET /api/users/<id>/snapshots` — List snapshots
+
+### Events & Alerts
+* `POST /api/users/<id>/events` — Create event
+* `GET /api/users/<id>/events` — List events
+* `POST /api/users/<id>/alerts` — Create alert
+* `GET /api/users/<id>/alerts` — List alerts
+
+### Chat & Messages
+* `POST /api/users/<id>/chat` — Send message → runs chat pipeline → returns `{ response, trace }`
+* `POST /api/users/<id>/messages` — Store raw message
+* `GET /api/users/<id>/messages` — List messages
+
+### Sync & Pipeline
+* `POST /api/users/<id>/sync` — Sync one user from Nessie
+* `POST /api/sync` — Sync all users
+* `POST /api/users/<id>/pipeline` — Run full event pipeline → returns `{ sync, risk, notification, alert, trace }`
+* `POST /api/pipeline` — Run pipeline for all users
+* `GET /api/users/<id>/risk` — Risk assessment only
+
+### Health
+* `GET /api/health` — Returns `{ "status": "ok" }`
+
+---
+
+## Frontend Pages
+
+### `index.html` — Sign In / Create Account
+
+Two-tab form. Sign In looks up user by name (`POST /api/users/login`). Create Account creates a Nessie customer + Supabase user (`POST /api/users`), then redirects to `goals.html`. Auto-redirects to dashboard if `userId` exists in `localStorage`.
+
+### `goals.html` — Financial Goals Onboarding
+
+Form for: monthly income, required expenditures, savings goal, total debt, current savings. Saves via `PUT /api/users/<id>/goals`.
+
+### `dashboard.html` + `dashboard.js` — Main Dashboard
+
+Layout (two-column grid):
+* **Left column:** Transaction list with total balance pill
+* **Right column:** Risk gauge (animated SVG arc + score) and Agent Reasoning Loop timeline
+
+Below the grid (split 2/5 + 3/5):
+* **Chat panel:** Message bubbles + input form
+* **Chat Reasoning Loop:** Animated timeline showing Goals Agent, Tradeoffs Agent, and Response Synthesis steps for each message
+
+Key interactions:
+* **"Sync & Analyze"** — triggers event pipeline, animates each trace step into the timeline, then animates the risk gauge
+* **Chat** — sends message, shows typing indicator, renders response + reasoning trace
+* Each trace step is expandable to show full details (goal impacts, spending cuts, alternatives, risk factors, etc.)
+
+---
+
+## Supabase Schema
+
+| Table | Key Columns |
+|-------|-------------|
+| `users` | id, first_name, last_name, nessie_customer_id, phone, monthly_income, monthly_expenses, savings_goal, current_savings, debt |
+| `accounts` | id, user_id, nessie_account_id, type, balance |
+| `transactions` | id, account_id, nessie_transaction_id, type, amount, description, transaction_date |
+| `budgets` | id, user_id, account_id (FK), category, amount, start_date, end_date |
+| `snapshots` | id, user_id, data (JSONB), created_at |
+| `events` | id, user_id, event_type, data (JSONB), processed, created_at |
+| `alerts` | id, user_id, message, risk_level, channel, sent_at |
+| `messages` | id, user_id, role (user/assistant), channel (web/sms), content, created_at |
+
+---
+
+## Design Principles
+
+* **Deterministic logic for calculations** — risk scores, budget math, goal projections are all code, not LLM
+* **LLM only for natural language** — explanation, message generation, creative alternatives
+* **Full transparency** — every agent step is traced with timing, input/output summaries, and expandable details
+* **Two pipelines, same trace format** — event pipeline and chat pipeline both produce trace arrays rendered identically
+* **Anti-spam** — notification agent enforces cooldown periods and checks for redundancy
+* **Graceful fallbacks** — all LLM agents have deterministic fallbacks if `OPENAI_API_KEY` is not set
+* **Nessie as source of truth** — sync service diffs Nessie data against Supabase to detect changes
+
+---
+
+## Testing
+
+### Test the event pipeline:
+```bash
+curl -X POST http://127.0.0.1:5001/api/users/<USER_ID>/pipeline
+```
+
+### Test the chat pipeline:
+```bash
+curl -X POST http://127.0.0.1:5001/api/users/<USER_ID>/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Can I afford dinner tonight?"}'
+```
+
+### Test risk assessment only:
+```bash
+curl http://127.0.0.1:5001/api/users/<USER_ID>/risk
+```
+
+---
+
+## Core Responsibilities of the LLM Assistant
+
+When generating responses, the LLM should:
+
+1. Help users make better financial decisions in real time
+2. Explain reasoning clearly and concisely
+3. Provide actionable recommendations — never vague advice
+4. Align decisions with user goals
+5. Suggest tradeoffs and alternatives, not just "no"
+6. Reference actual numbers from the financial context
+7. Never fabricate data or give investment advice
+
+### Response Structure
+
+1. **Situation** — what's happening financially
+2. **Impact** — why it matters for their goals
+3. **Recommendation** — specific action to take, with alternatives
+
+### Tone
 
 * Supportive, not judgmental
 * Clear and confident
 * Practical, not theoretical
-
----
-
-## 🏁 Goal
-
-Help the user:
-
-* Avoid bad financial decisions
-* Stay aligned with goals
-* Understand consequences
-* Build better habits
-
----
-
-## 🧠 Agent Architecture (Nessie-Based)
-
-This project uses an **event-driven, agentic architecture** on top of the Nessie API (mock banking backend).
-
-### High-Level Flow
-
-```text
-Nessie API → Sync/Polling → Event Detection → Agent Orchestrator → Agents → SMS + Dashboard
-```
-
----
-
-### 1. Nessie Sync Service
-
-* Polls Nessie for accounts, transactions, and bills (every 1–5 minutes or on demand)
-* Normalizes data
-* Compares with local DB
-* Emits internal events when changes are detected
-
-**Events:**
-
-* `new_transaction`
-* `large_transaction`
-* `paycheck_received`
-* `bill_posted`
-
----
-
-### 2. Event Detector
-
-Converts raw Nessie changes into structured events.
-
-Example:
-
-```json
-{
-  "event_type": "new_transaction",
-  "amount": 47.8,
-  "category": "food",
-  "merchant": "Uber Eats"
-}
-```
-
----
-
-### 3. Financial Risk Agent
-
-Deterministic logic that evaluates:
-
-* Budget status
-* Cash flow
-* Upcoming bills
-* Goal alignment
-* Spending anomalies
-
-Outputs:
-
-* Risk level
-* Reasons
-* Suggested actions
-
----
-
-### 4. Notification (Critic) Agent
-
-Decides whether to alert the user.
-
-Checks:
-
-* Alert importance
-* Redundancy (avoid spam)
-* Actionability
-
----
-
-### 5. Messaging Agent (LLM)
-
-Transforms structured analysis into:
-
-* SMS messages
-* Dashboard explanations
-
-Keep concise and actionable.
-
----
-
-### 6. Conversation Agent
-
-Handles user replies via SMS or web:
-
-* Answers questions
-* Explains alerts
-* Suggests actions
-* Updates recommendations dynamically
-
----
-
-## 🔁 Agent Loop
-
-For each detected event:
-
-1. Sync Nessie data
-2. Detect new event
-3. Run Financial Risk Agent
-4. Run Notification Agent
-5. If alert-worthy → send SMS
-6. Store reasoning + event
-7. Handle user replies (if any)
-
----
-
-## ⚙️ Execution Rules
-
-Agents should run when:
-
-* A new transaction appears
-* A bill is posted
-* A paycheck is received
-* A threshold is crossed (budget, balance, goals)
-
----
-
-## ⚠️ Design Principles
-
-* Deterministic logic for calculations
-* LLM only for explanation + communication
-* Avoid alert spam
-* Always provide actionable recommendations
-* Keep SMS concise
-
----
-
-## Summary
-
-You are not just answering questions.
-
-You are a **real-time financial copilot** powered by an event-driven agent system, helping users make better decisions at the moment they matter most.
-
-You are not just answering questions.
-
-You are a **real-time financial copilot** helping users make better decisions at the moment they matter most.
+* Concise for SMS (2–3 sentences), slightly more detail for web (3–5 sentences)

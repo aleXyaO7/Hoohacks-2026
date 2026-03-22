@@ -278,30 +278,40 @@ def _check_budget(user, account, transaction):
         day=1, hour=0, minute=0, second=0, microsecond=0
     ).strftime("%Y-%m-%d")
 
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
     for budget in budgets.data:
         category = budget["category"]
-        monthly_limit = budget.get("monthly_limit")
-        if not monthly_limit:
+        limit_amount = float(budget.get("amount") or 0)
+        if limit_amount <= 0:
             continue
 
+        start = budget.get("start_date") or month_start
+        end = budget.get("end_date") or today
+
+        if today < start or today > end:
+            continue
+
+        target_account = budget.get("account_id") or account["id"]
         spent_result = (
             sb.table("transactions")
             .select("amount")
-            .eq("account_id", account["id"])
+            .eq("account_id", target_account)
             .eq("category", category)
-            .gte("transaction_date", month_start)
+            .gte("transaction_date", start)
             .execute()
         )
         total_spent = sum(t["amount"] for t in spent_result.data)
 
-        if total_spent > float(monthly_limit):
+        if total_spent > limit_amount:
             events.append({
                 "event_type": "budget_exceeded",
                 "payload": {
                     "category": category,
                     "spent": total_spent,
-                    "limit": float(monthly_limit),
-                    "overage": total_spent - float(monthly_limit),
+                    "limit": limit_amount,
+                    "overage": total_spent - limit_amount,
+                    "period": f"{start} to {end}",
                 },
             })
 
