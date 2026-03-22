@@ -364,7 +364,13 @@ def send_whatsapp_alert(to_phone: str | None, message: str):
     )
     print(f"📤 Alert sent to {target}: {message}")
 
-def send_over_budget_alert(to_phone: str, merchant: str, purchase_amount: float, budget_limit: float, category: str):
+def send_over_budget_alert(
+    to_phone: str | None,
+    merchant: str,
+    purchase_amount: float,
+    budget_limit: float,
+    category: str,
+):
     """
     Send a proactive WhatsApp alert when a purchase exceeds the recommended
     budget for that category.
@@ -392,12 +398,18 @@ def send_over_budget_alert(to_phone: str, merchant: str, purchase_amount: float,
 
     message = ask_openai(prompt, max_tokens=150)
 
+    target = to_phone or _get_last_inbound_sender()
+    if not target:
+        raise ValueError(
+            "No destination phone available. Pass to_phone, or receive at least one inbound /sms first."
+        )
+
     twilio_client.messages.create(
         body=message,
         from_=TWILIO_WHATSAPP_NUMBER,
-        to=f"whatsapp:{to_phone}"
+        to=_normalize_whatsapp_to(target)
     )
-    print(f"📤 Over-budget alert sent to {to_phone}: {message}")
+    print(f"📤 Over-budget alert sent to {target}: {message}")
 
 
 # ── Test route ─────────────────────────────────────────────────────────────────
