@@ -3,6 +3,7 @@ import numpy as np
 
 from backend.nessie import *
 from backend.agents.agent import generate
+from backend.helpers import get_user_budgets
 
 def sort_transaction_by_date(transactions, start_date=None, end_date=None):
     results = []
@@ -51,13 +52,18 @@ def compile_budget_history(account_id, category, start_date, end_date, budget_am
         history[day:] += amount
     return history
 
-def compile_all_similar_budgets(account_id, category, start_date, end_date, budget_amount):
+def compile_all_similar_budgets(account_id, budget_id):
+    all_budgets = get_user_budgets(account_id)
+
+    goal_budget = get_budget(budget_id)
+    category, start_date, end_date = goal_budget['category'], goal_budget['start_date'], goal_budget['end_date']
     delta = datetime.datetime.strptime(end_date, r'%Y-%m-%d') - datetime.datetime.strptime(start_date, r'%Y-%m-%d')
     num_days = delta.days + 1
-    history = np.zeros(num_days)
-    transaction_categories = analyze_transaction_categories(account_id, [category, 'not ' + category], start_date, end_date)
-    for transaction in transaction_categories[category]['transaction']:
-        amount = transaction['amount'] / budget_amount
-        day = (datetime.datetime.strptime(transaction['purchase_date'], r'%Y-%m-%d') - datetime.datetime.strptime(start_date, r'%Y-%m-%d')).days
-        history[day:] += amount
-    return history
+    average_history = np.zeros(num_days)
+    count = 0
+
+    for budget in all_budgets:
+        if budget['category'] == goal_budget['category'] and (datetime.datetime.strptime(budget['end_date'], r'%Y-%m-%d') - datetime.datetime.strptime(budget['start_date'], r'%Y-%m-%d') ).days + 1 == num_days:
+            average_history += compile_budget_history(account_id, category, start_date, end_date, budget['amount'])
+            count += 1
+    return average_history / count
