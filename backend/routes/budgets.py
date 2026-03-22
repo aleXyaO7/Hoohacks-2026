@@ -22,6 +22,8 @@ def upsert_budget(user_id):
             data["end_date"],
             account_id=data.get("account_id"),
         )
+        if not budget:
+            return jsonify({"error": "Failed to save budget"}), 500
         return jsonify(budget), 201
     except Exception as e:
         return jsonify({"error": str(e)}), 500

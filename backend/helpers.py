@@ -30,9 +30,11 @@ def get_transaction_history(user_id, limit=20):
     if not account_ids:
         return []
 
+    # Use select("*") so we never ask PostgREST for a column that might not exist yet.
+    # If you add optional columns (e.g. category), they appear automatically once migrated.
     txns = (
         sb.table("transactions")
-        .select("amount, type, description, transaction_date")
+        .select("*")
         .in_("account_id", account_ids)
         .order("transaction_date", desc=True)
         .limit(limit)
@@ -56,6 +58,7 @@ def create_budget(user_id, category, amount, start_date, end_date, account_id=No
     Upserts on (user_id, category) so calling twice with the same
     category updates the existing budget.
     """
+    sb = get_supabase()
     row = {
         "user_id": user_id,
         "category": category,
@@ -64,12 +67,26 @@ def create_budget(user_id, category, amount, start_date, end_date, account_id=No
         "end_date": end_date,
         "account_id": account_id,
     }
-    result = (
-        get_supabase()
-        .table("budgets")
-        .insert(row)
+    existing = (
+        sb.table("budgets")
+        .select("id")
+        .eq("user_id", user_id)
+        .eq("category", category)
+        .limit(1)
         .execute()
     )
+    if existing.data:
+        bid = existing.data[0]["id"]
+        update_payload = {
+            "category": category,
+            "amount": amount,
+            "start_date": start_date,
+            "end_date": end_date,
+            "account_id": account_id,
+        }
+        result = sb.table("budgets").update(update_payload).eq("id", bid).execute()
+    else:
+        result = sb.table("budgets").insert(row).execute()
     return result.data[0] if result.data else None
 
 if __name__ == "__main__":
