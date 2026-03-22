@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify
 from db import get_supabase
-from helpers import get_user_budgets, create_budget
+from helpers import get_user_budgets, create_budget, get_active_budgets_usage
 
 budgets_bp = Blueprint("budgets", __name__)
 
@@ -33,6 +33,15 @@ def upsert_budget(user_id):
 def list_budgets(user_id):
     try:
         return jsonify(get_user_budgets(user_id))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@budgets_bp.route("/api/users/<user_id>/budgets/active", methods=["GET"])
+def active_budgets_usage(user_id):
+    """Active budget periods (today in range) with spent vs limit."""
+    try:
+        return jsonify(get_active_budgets_usage(user_id))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

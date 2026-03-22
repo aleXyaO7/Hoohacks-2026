@@ -18,6 +18,34 @@ def get_user_budgets(user_id):
     return result.data or []
 
 
+def get_user_budgets_by_nessie_account(nessie_account_id):
+    """Resolve a Nessie account id to Supabase ``accounts.user_id``, then load budgets.
+
+    Args:
+        nessie_account_id: Value stored in ``accounts.nessie_account_id`` (Nessie API id).
+
+    Returns:
+        Same list of budget dicts as :func:`get_user_budgets`. Empty list if the
+        Nessie id is missing, no row matches, or ``user_id`` is absent.
+    """
+    if not nessie_account_id:
+        return []
+    result = (
+        get_supabase()
+        .table("accounts")
+        .select("user_id")
+        .eq("nessie_account_id", str(nessie_account_id))
+        .limit(1)
+        .execute()
+    )
+    if not result.data:
+        return []
+    user_id = result.data[0].get("user_id")
+    if not user_id:
+        return []
+    return get_user_budgets(user_id)
+
+
 def get_budget_by_id(budget_id, user_id=None):
     """Return one budget row by its primary key ``id``.
 
