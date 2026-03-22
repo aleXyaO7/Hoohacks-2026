@@ -1,9 +1,10 @@
 import requests, datetime
+from datetime import timezone
 import numpy as np
 
 from backend.nessie import *
 from backend.agents.agent import generate
-from backend.helpers import get_user_budgets, get_budget_by_id
+from backend.helpers import *
 
 def sort_transaction_by_date(transactions, start_date=None, end_date=None):
     results = []
@@ -14,10 +15,8 @@ def sort_transaction_by_date(transactions, start_date=None, end_date=None):
 
 def analyze_transaction_categories(account_id, categories, start_date=None, end_date=None):
     transactions = get_transactions(account_id)
-    print(transactions)
     if start_date or end_date:
         transactions = sort_transaction_by_date(transactions, start_date, end_date)
-    
     descriptions = [transaction['description'] for transaction in transactions]
     
     context = f"""You are a helpful analyst. Examine the descriptions below and determine which category {categories} they belong in. Output a list of categories in the same order of the descriptions, along with which description they belong to.
@@ -35,7 +34,6 @@ def analyze_transaction_categories(account_id, categories, start_date=None, end_
         output = generate(prompt, context)
         try:
             labels = [label.split(';')[1].strip() for label in output.split('\n')]
-            print(len(transactions), len(labels))
             for i in range(len(transactions)):
                 results[labels[i]]['transaction'].append(transactions[i])
                 results[labels[i]]['sum'] += transactions[i]['amount']
@@ -55,7 +53,7 @@ def compile_budget_history(account_id, category, start_date, end_date, budget_am
     return history
 
 def compile_all_similar_budgets(account_id, budget_id):
-    all_budgets = get_user_budgets(account_id)
+    all_budgets = get_user_budgets_by_nessie_account(account_id)
 
     goal_budget = get_budget_by_id(budget_id)
     category, start_date, end_date = goal_budget['category'], goal_budget['start_date'], goal_budget['end_date']
@@ -69,3 +67,24 @@ def compile_all_similar_budgets(account_id, budget_id):
             average_history += compile_budget_history(account_id, category, start_date, end_date, budget['amount'])
             count += 1
     return average_history / count
+
+def check_budget_over(account_id, budget_id):
+    goal_budget = get_budget_by_id(budget_id)
+    category, start_date, end_date, amount = goal_budget['category'], goal_budget['start_date'], goal_budget['end_date'], goal_budget['amount']
+    transactions = get_transactions(account_id)
+    transactions = sort_transaction_by_date(transactions, start_date, end_date)
+    transaction_categories = analyze_transaction_categories(account_id, [category, 'not ' + category], start_date, end_date)
+    return {
+        'budget_amount' : amount,
+        'current_amount' : transaction_categories[category]['sum'],
+        'current_transactions' : transaction_categories[category]['transaction']
+    }
+
+def check_budget_warnings(account_id, budget_id):
+    goal_budget = get_budget_by_id(budget_id)
+    category, start_date, end_date, amount = goal_budget['category'], goal_budget['start_date'], goal_budget['end_date'], goal_budget['amount']
+    budget_history = compile_budget_history(account_id, category, start_date, end_date, amount)
+    similar_budget_history = compile_all_similar_budgets(account_id, budget_id)
+
+    delta = datetime.datetime.now(timezone.utc) - start_date
+    return budget_history[delta.days] <= similar_budget_history[delta.days]
