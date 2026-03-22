@@ -3,7 +3,7 @@ import numpy as np
 
 from backend.nessie import *
 from backend.agents.agent import generate
-from backend.helpers import get_user_budgets
+from backend.helpers import get_user_budgets, get_budget_by_id
 
 def sort_transaction_by_date(transactions, start_date=None, end_date=None):
     results = []
@@ -14,6 +14,7 @@ def sort_transaction_by_date(transactions, start_date=None, end_date=None):
 
 def analyze_transaction_categories(account_id, categories, start_date=None, end_date=None):
     transactions = get_transactions(account_id)
+    print(transactions)
     if start_date or end_date:
         transactions = sort_transaction_by_date(transactions, start_date, end_date)
     
@@ -34,6 +35,7 @@ def analyze_transaction_categories(account_id, categories, start_date=None, end_
         output = generate(prompt, context)
         try:
             labels = [label.split(';')[1].strip() for label in output.split('\n')]
+            print(len(transactions), len(labels))
             for i in range(len(transactions)):
                 results[labels[i]]['transaction'].append(transactions[i])
                 results[labels[i]]['sum'] += transactions[i]['amount']
@@ -55,7 +57,7 @@ def compile_budget_history(account_id, category, start_date, end_date, budget_am
 def compile_all_similar_budgets(account_id, budget_id):
     all_budgets = get_user_budgets(account_id)
 
-    goal_budget = get_budget(budget_id)
+    goal_budget = get_budget_by_id(budget_id)
     category, start_date, end_date = goal_budget['category'], goal_budget['start_date'], goal_budget['end_date']
     delta = datetime.datetime.strptime(end_date, r'%Y-%m-%d') - datetime.datetime.strptime(start_date, r'%Y-%m-%d')
     num_days = delta.days + 1
