@@ -1,16 +1,16 @@
 from flask import Blueprint, request, jsonify
 from db import get_supabase
-from agents.conversation_agent import handle_message
+from chatbot2 import chat as chatbot_chat
 
 messages_bp = Blueprint("messages", __name__)
 
 
 @messages_bp.route("/api/users/<user_id>/chat", methods=["POST"])
 def chat(user_id):
-    """Send a message and get a contextual AI response.
+    """Send a message to the tool-calling chatbot.
 
     Body: { "message": "Can I afford dinner tonight?", "channel": "web" }
-    Returns: { "response": "...", "context_used": {...} }
+    Returns: { "response": "...", "tool_calls": [...] }
     """
     data = request.get_json()
     if "message" not in data:
@@ -19,7 +19,7 @@ def chat(user_id):
     channel = data.get("channel", "web")
 
     try:
-        result = handle_message(user_id, data["message"], channel=channel)
+        result = chatbot_chat(user_id, data["message"], channel=channel)
         return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -27,7 +27,6 @@ def chat(user_id):
 
 @messages_bp.route("/api/users/<user_id>/messages", methods=["POST"])
 def send_message(user_id):
-    """Store a raw message (no AI response). Used for logging or manual inserts."""
     data = request.get_json()
     if "content" not in data:
         return jsonify({"error": "content is required"}), 400

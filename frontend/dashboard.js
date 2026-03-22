@@ -7,7 +7,8 @@ if (!userId) window.location.href = "index.html";
 document.getElementById("header-greeting").textContent =
   userName ? `Welcome back, ${userName}` : "";
 
-loadDashboard();
+loadTransactions();
+loadChatHistory();
 
 document.getElementById("chat-form").addEventListener("submit", (e) => {
   e.preventDefault();
@@ -18,319 +19,75 @@ document.getElementById("chat-form").addEventListener("submit", (e) => {
   sendChat(text);
 });
 
-// ── Data Loading ───────────────────────────────────────────────────
-
-async function loadDashboard() {
-  await Promise.all([
-    loadTransactions(),
-    loadRisk(),
-    loadChatHistory(),
-  ]);
-}
+// ── Transactions ──────────────────────────────────────────────────
 
 async function loadTransactions() {
-  try {
-    const [acctResp, txnResp] = await Promise.all([
-      fetch(`${API}/api/users/${userId}/accounts`),
-      fetch(`${API}/api/users/${userId}/transactions?limit=30`),
-    ]);
-    const accounts = await acctResp.json();
-    const txns = await txnResp.json();
-
-    const total = accounts.reduce((s, a) => s + Number(a.balance || 0), 0);
-    document.getElementById("balance-pill").textContent = formatMoney(total);
-
-    const list = document.getElementById("transactions-list");
-    list.innerHTML = txns.length
-      ? txns.map((t) => `
-          <div class="flex justify-between items-center py-2.5 px-2 rounded-lg hover:bg-gray-50 transition">
-            <div class="min-w-0">
-              <p class="text-sm font-medium text-gray-800 truncate">${esc(t.description || "Transaction")}</p>
-              <p class="text-xs text-gray-400">${t.transaction_date || "N/A"}</p>
-            </div>
-            <span class="text-sm font-semibold whitespace-nowrap ml-3 ${t.type === "deposit" ? "text-green-600" : "text-gray-900"}">
-              ${t.type === "deposit" ? "+" : "-"}${formatMoney(t.amount)}
-            </span>
-          </div>`).join("")
-      : '<p class="text-sm text-gray-400 py-4 text-center">No transactions yet. Click Sync & Analyze.</p>';
-  } catch {
-    document.getElementById("transactions-list").innerHTML =
-      '<p class="text-sm text-red-500 text-center py-4">Failed to load.</p>';
-  }
-}
-
-async function loadRisk() {
-  try {
-    const resp = await fetch(`${API}/api/users/${userId}/risk`);
-    if (!resp.ok) { setRiskEmpty(); return; }
-    const data = await resp.json();
-    const risk = data.risk;
-    if (!risk) { setRiskEmpty(); return; }
-    renderRisk(risk);
-  } catch { setRiskEmpty(); }
-}
-
-// ── Risk Gauge ─────────────────────────────────────────────────────
-
-function renderRisk(risk, animate = false) {
-  const score = risk.score;
-  const level = risk.risk_level;
-
-  document.getElementById("risk-score").textContent = animate ? "0" : score;
-
-  const badge = document.getElementById("risk-badge");
-  badge.textContent = level.toUpperCase();
-  badge.className = `ml-2 px-2.5 py-0.5 rounded-full text-xs font-semibold ${riskBadgeColor(level)}`;
-
-  // Gauge arc: 157 is the full arc length
-  const arc = document.getElementById("gauge-arc");
-  const offset = 157 - (score / 100) * 157;
-  arc.style.stroke = gaugeColor(score);
-  if (animate) {
-    arc.style.transition = "none";
-    arc.style.strokeDashoffset = "157";
-    requestAnimationFrame(() => {
-      arc.style.transition = "stroke-dashoffset 1.2s ease-out";
-      arc.style.strokeDashoffset = offset;
-    });
-    animateNumber("risk-score", 0, score, 1200);
-  } else {
-    arc.style.strokeDashoffset = offset;
-  }
-
-  // Factors
-  const factorsEl = document.getElementById("risk-factors");
-  factorsEl.innerHTML = (risk.factors || []).slice(0, 4).map((f) => `
-    <div class="flex items-start gap-2">
-      <span class="mt-1 w-2 h-2 rounded-full flex-shrink-0 ${severityDot(f.severity)}"></span>
-      <span class="text-sm text-gray-700">${esc(f.detail)}</span>
-    </div>`).join("");
-}
-
-function setRiskEmpty() {
-  document.getElementById("risk-score").textContent = "--";
-  const badge = document.getElementById("risk-badge");
-  badge.textContent = "N/A";
-  badge.className = "ml-2 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-500";
-  document.getElementById("gauge-arc").style.strokeDashoffset = "157";
-  document.getElementById("risk-factors").innerHTML =
-    '<p class="text-sm text-gray-400">Run Sync & Analyze to get your risk assessment.</p>';
-}
-
-function animateNumber(elId, from, to, duration) {
-  const el = document.getElementById(elId);
-  const start = performance.now();
-  function tick(now) {
-    const p = Math.min((now - start) / duration, 1);
-    const eased = 1 - Math.pow(1 - p, 3);
-    el.textContent = Math.round(from + (to - from) * eased);
-    if (p < 1) requestAnimationFrame(tick);
-  }
-  requestAnimationFrame(tick);
-}
-
-// ── Pipeline + Animated Reasoning ──────────────────────────────────
-
-async function triggerPipeline() {
-  const btn = document.getElementById("sync-btn");
-  const icon = document.getElementById("sync-icon");
-  btn.disabled = true;
-  document.getElementById("sync-text").textContent = "Running...";
-  icon.classList.add("animate-spin");
-
-  // Clear timeline, show running state
-  const timeline = document.getElementById("reasoning-timeline");
-  timeline.innerHTML = `
-    <div class="flex items-center gap-3 text-sm text-gray-500">
-      <svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
-        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-      </svg>
-      Running agent pipeline...
-    </div>`;
+  const container = document.getElementById("txn-list");
+  const balancePill = document.getElementById("txn-balance");
 
   try {
-    const resp = await fetch(`${API}/api/users/${userId}/pipeline`, { method: "POST" });
-    const result = await resp.json();
+    const resp = await fetch(`${API}/api/users/${userId}/transactions?limit=50`);
+    const txns = await resp.json();
 
-    if (result.error) {
-      timeline.innerHTML = `<p class="text-sm text-red-500">Error: ${esc(result.error)}</p>`;
+    if (!txns.length) {
+      container.innerHTML = '<p class="text-sm text-gray-400 py-8 text-center">No transactions yet.</p>';
+      balancePill.classList.add("hidden");
       return;
     }
 
-    // Render trace steps with staggered animation
-    const trace = result.trace || [];
-    timeline.innerHTML = "";
+    let totalDeposits = 0;
+    let totalPurchases = 0;
 
-    for (let i = 0; i < trace.length; i++) {
-      const step = trace[i];
-      const el = buildTraceStep(i + 1, step);
-      timeline.appendChild(el);
-      // Stagger: each step appears 400ms after the previous
-      setTimeout(() => el.classList.add("visible"), i * 400);
-    }
+    container.innerHTML = "";
+    txns.forEach((t) => {
+      const amt = parseFloat(t.amount) || 0;
+      const isDeposit = t.type === "deposit";
+      if (isDeposit) totalDeposits += amt; else totalPurchases += amt;
 
-    // Animate risk gauge after trace finishes
-    if (result.risk) {
-      const riskDelay = trace.length * 400;
-      setTimeout(() => renderRisk(result.risk, true), riskDelay);
-    }
-
-    // Refresh transactions
-    await loadTransactions();
-
-  } catch (err) {
-    timeline.innerHTML = `<p class="text-sm text-red-500">Pipeline failed: ${esc(err.message)}</p>`;
-  } finally {
-    btn.disabled = false;
-    document.getElementById("sync-text").textContent = "Sync & Analyze";
-    icon.classList.remove("animate-spin");
-  }
-}
-
-function buildTraceStep(num, step) {
-  const isLLM = step.agent_type === "llm";
-  const isSkipped = step.status === "skipped";
-  const isError = step.status === "error";
-
-  const statusIcon = isError
-    ? `<span class="text-red-500">&#10007;</span>`
-    : isSkipped
-    ? `<span class="text-gray-400">&#8212;</span>`
-    : `<span class="text-green-600">&#10003;</span>`;
-
-  const statusBorder = isError ? "border-red-200" : isSkipped ? "border-gray-200" : "border-green-200";
-
-  const llmBadge = isLLM
-    ? `<span class="ml-2 text-[10px] font-semibold bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded">${esc(step.model || "LLM")}</span>`
-    : `<span class="ml-2 text-[10px] font-semibold bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">deterministic</span>`;
-
-  const durationStr = step.duration_ms > 0 ? `${step.duration_ms}ms` : "";
-
-  const detailsHtml = buildDetailsHtml(step);
-
-  const wrapper = document.createElement("div");
-  wrapper.className = `trace-step border-l-4 ${statusBorder} rounded-lg bg-white shadow-sm`;
-  wrapper.innerHTML = `
-    <div class="px-4 py-3 cursor-pointer select-none" onclick="toggleDetail(this)">
-      <div class="flex items-center justify-between">
-        <div class="flex items-center gap-2">
-          <span class="text-xs font-bold text-gray-400 w-5">${num}</span>
-          ${statusIcon}
-          <span class="text-sm font-semibold text-gray-800">${esc(step.agent)}</span>
-          ${llmBadge}
+      const row = document.createElement("div");
+      row.className =
+        "flex items-center justify-between px-3 py-2.5 rounded-lg hover:bg-gray-50 transition group";
+      row.innerHTML = `
+        <div class="flex items-center gap-3 min-w-0">
+          <div class="w-8 h-8 rounded-full flex items-center justify-center shrink-0
+            ${isDeposit ? "bg-emerald-100 text-emerald-600" : "bg-red-100 text-red-500"}">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="${isDeposit
+                  ? "M12 19V5m0 0l-4 4m4-4l4 4"
+                  : "M12 5v14m0 0l4-4m-4 4l-4-4"}" />
+            </svg>
+          </div>
+          <div class="min-w-0">
+            <p class="text-sm font-medium text-gray-800 truncate">${esc(t.description || t.type)}</p>
+            <p class="text-xs text-gray-400">${formatDate(t.transaction_date)}</p>
+          </div>
         </div>
-        <div class="flex items-center gap-3">
-          <span class="text-xs text-gray-400">${durationStr}</span>
-          <svg class="w-4 h-4 text-gray-400 transition-transform detail-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-          </svg>
-        </div>
-      </div>
-      <p class="text-sm text-gray-600 mt-1 ml-7">${esc(step.output_summary)}</p>
-    </div>
-    <div class="detail-body">
-      <div class="px-4 pb-3 ml-7 border-t border-gray-100 pt-3 space-y-2">
-        <p class="text-xs text-gray-500"><span class="font-semibold">Input:</span> ${esc(step.input_summary)}</p>
-        ${detailsHtml}
-      </div>
-    </div>`;
-  return wrapper;
+        <span class="text-sm font-semibold tabular-nums shrink-0
+          ${isDeposit ? "text-emerald-600" : "text-gray-800"}">
+          ${isDeposit ? "+" : "-"}$${amt.toFixed(2)}
+        </span>`;
+      container.appendChild(row);
+    });
+
+    const net = totalDeposits - totalPurchases;
+    balancePill.textContent = `Net: ${net >= 0 ? "+" : ""}$${net.toFixed(2)}`;
+    balancePill.className = `text-xs font-semibold px-2.5 py-1 rounded-full ${
+      net >= 0
+        ? "bg-emerald-50 text-emerald-700"
+        : "bg-red-50 text-red-600"
+    }`;
+    balancePill.classList.remove("hidden");
+  } catch {
+    container.innerHTML =
+      '<p class="text-sm text-red-500 py-8 text-center">Failed to load transactions.</p>';
+  }
 }
 
-function buildDetailsHtml(step) {
-  const d = step.details || {};
-  const lines = [];
-
-  // Sync agent
-  if (d.events_detected && d.events_detected.length) {
-    lines.push(`<span class="font-semibold">Events:</span> ${d.events_detected.map(e => `<span class="inline-block bg-blue-50 text-blue-700 text-[11px] px-1.5 py-0.5 rounded mr-1">${esc(e)}</span>`).join("")}`);
-  }
-
-  // Risk agent
-  if (d.score !== undefined) {
-    lines.push(`<span class="font-semibold">Score:</span> ${d.score}/100 → ${esc(d.risk_level || "").toUpperCase()}`);
-  }
-  if (d.factors && d.factors.length) {
-    const factorStrs = d.factors.map(f => `<span class="${severityText(f.severity)}">[${f.severity.toUpperCase()}]</span> ${esc(f.detail)}`);
-    lines.push(`<span class="font-semibold">Factors:</span><br/>${factorStrs.join("<br/>")}`);
-  }
-  if (d.recommendations && d.recommendations.length) {
-    lines.push(`<span class="font-semibold">Recommendations:</span><br/>${d.recommendations.map(r => "• " + esc(r)).join("<br/>")}`);
-  }
-
-  // Notification agent
-  if (d.decision) {
-    lines.push(`<span class="font-semibold">Decision:</span> ${esc(d.decision)}`);
-  }
-  if (d.reason) {
-    lines.push(`<span class="font-semibold">Reason:</span> ${esc(d.reason)}`);
-  }
-  if (d.suppressed_reasons && d.suppressed_reasons.length) {
-    lines.push(`<span class="font-semibold">Suppressed:</span> ${d.suppressed_reasons.map(r => esc(r)).join("; ")}`);
-  }
-
-  // Messaging agent
-  if (d.messages && d.messages.length) {
-    d.messages.forEach(m => {
-      lines.push(`<span class="font-semibold">${esc(m.channel)} message:</span><br/><span class="text-gray-700 italic">"${esc(m.message)}"</span>`);
-    });
-  }
-
-  // Context gathering agent
-  if (d.balance !== undefined) {
-    lines.push(`<span class="font-semibold">Balance:</span> $${Number(d.balance).toLocaleString("en-US", {minimumFractionDigits: 2})}`);
-  }
-  if (d.transactions !== undefined) {
-    lines.push(`<span class="font-semibold">Data loaded:</span> ${d.accounts} account(s), ${d.transactions} transaction(s), ${d.budgets} budget(s)`);
-  }
-
-  // Goals agent
-  if (d.aligned !== undefined) {
-    const alignBadge = d.aligned
-      ? '<span class="inline-block bg-green-50 text-green-700 text-[11px] px-1.5 py-0.5 rounded">ALIGNED</span>'
-      : '<span class="inline-block bg-red-50 text-red-700 text-[11px] px-1.5 py-0.5 rounded">CONFLICTS</span>';
-    lines.push(`<span class="font-semibold">Goal alignment:</span> ${alignBadge}`);
-  }
-  if (d.goal_impacts && d.goal_impacts.length) {
-    d.goal_impacts.forEach(g => {
-      lines.push(`<span class="font-semibold">${esc(g.goal)}:</span> ${esc(g.status)} — ${esc(g.detail)}`);
-    });
-  }
-  if (d.analysis) {
-    lines.push(`<span class="font-semibold">Analysis:</span> <span class="italic">${esc(d.analysis)}</span>`);
-  }
-
-  // Tradeoffs agent
-  if (d.cuts && d.cuts.length) {
-    lines.push(`<span class="font-semibold">Potential cuts:</span>`);
-    d.cuts.forEach(c => {
-      lines.push(`&nbsp;&nbsp;• ${esc(c.category)}: cut $${c.suggested_cut.toLocaleString("en-US", {minimumFractionDigits: 2})} from $${c.current_spend.toLocaleString("en-US", {minimumFractionDigits: 2})}`);
-    });
-  }
-  if (d.lowest_impact) {
-    lines.push(`<span class="font-semibold">Lowest impact:</span> ${esc(d.lowest_impact)}`);
-  }
-  if (d.alternatives && d.alternatives.length) {
-    lines.push(`<span class="font-semibold">Alternatives:</span>`);
-    d.alternatives.forEach(a => {
-      lines.push(`&nbsp;&nbsp;• ${esc(a)}`);
-    });
-  }
-
-  // Response synthesis agent
-  if (d.response_length !== undefined) {
-    lines.push(`<span class="font-semibold">Response:</span> ${d.response_length} chars, channel: ${esc(d.channel)}, using ${d.history_messages} history message(s)`);
-  }
-
-  return lines.map(l => `<p class="text-xs text-gray-600">${l}</p>`).join("");
-}
-
-function toggleDetail(header) {
-  const body = header.nextElementSibling;
-  const chevron = header.querySelector(".detail-chevron");
-  body.classList.toggle("open");
-  chevron.style.transform = body.classList.contains("open") ? "rotate(180deg)" : "";
+function formatDate(dateStr) {
+  if (!dateStr) return "";
+  const d = new Date(dateStr);
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
 // ── Chat ───────────────────────────────────────────────────────────
@@ -351,15 +108,14 @@ async function sendChat(text) {
   showTypingIndicator();
   scrollChat();
 
-  // Show running state in chat reasoning panel
-  const chatReasoning = document.getElementById("chat-reasoning");
-  chatReasoning.innerHTML = `
+  const panel = document.getElementById("tool-calls-panel");
+  panel.innerHTML = `
     <div class="flex items-center gap-3 text-sm text-gray-500">
       <svg class="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
         <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
         <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
       </svg>
-      Agents reasoning...
+      Thinking...
     </div>`;
 
   try {
@@ -372,21 +128,111 @@ async function sendChat(text) {
     removeTypingIndicator();
     appendChatBubble("assistant", data.response || data.error || "No response");
 
-    // Render chat reasoning trace
-    const trace = data.trace || [];
-    chatReasoning.innerHTML = "";
-    for (let i = 0; i < trace.length; i++) {
-      const el = buildTraceStep(i + 1, trace[i]);
-      chatReasoning.appendChild(el);
-      setTimeout(() => el.classList.add("visible"), i * 300);
-    }
+    renderToolCalls(data.tool_calls || []);
   } catch {
     removeTypingIndicator();
     appendChatBubble("assistant", "Sorry, something went wrong.");
-    chatReasoning.innerHTML = '<p class="text-sm text-red-500">Reasoning trace unavailable.</p>';
+    panel.innerHTML = '<p class="text-sm text-red-500">Failed to retrieve tool calls.</p>';
   }
   scrollChat();
 }
+
+// ── Tool Calls Panel ───────────────────────────────────────────────
+
+function renderToolCalls(toolCalls) {
+  const panel = document.getElementById("tool-calls-panel");
+
+  if (!toolCalls.length) {
+    panel.innerHTML = '<p class="text-sm text-gray-400">No tools were called for this response.</p>';
+    return;
+  }
+
+  panel.innerHTML = "";
+  toolCalls.forEach((tc, i) => {
+    const el = buildToolCallCard(i + 1, tc);
+    panel.appendChild(el);
+    setTimeout(() => el.classList.add("visible"), i * 200);
+  });
+}
+
+function buildToolCallCard(num, tc) {
+  const toolName = tc.tool.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+  const argsStr = Object.keys(tc.args).length
+    ? Object.entries(tc.args).map(([k, v]) => `${k}: ${JSON.stringify(v)}`).join(", ")
+    : "no arguments";
+
+  const resultSummary = summarizeResult(tc.tool, tc.result);
+  const resultJson = JSON.stringify(tc.result, null, 2);
+
+  const wrapper = document.createElement("div");
+  wrapper.className = "tool-step border border-gray-200 rounded-lg bg-white shadow-sm";
+  wrapper.innerHTML = `
+    <div class="px-4 py-3 cursor-pointer select-none" onclick="toggleToolDetail(this)">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span class="text-xs font-bold text-gray-400 w-5">${num}</span>
+          <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+          </svg>
+          <span class="text-sm font-semibold text-gray-800">${esc(toolName)}</span>
+          <span class="text-[10px] font-semibold bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded">tool</span>
+        </div>
+        <svg class="w-4 h-4 text-gray-400 transition-transform tool-chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+        </svg>
+      </div>
+      <p class="text-xs text-gray-500 mt-1 ml-7">Args: ${esc(argsStr)}</p>
+      <p class="text-sm text-gray-700 mt-1 ml-7">${esc(resultSummary)}</p>
+    </div>
+    <div class="tool-detail-body" style="max-height: 0; overflow: hidden; transition: max-height 0.3s ease;">
+      <div class="px-4 pb-3 ml-7 border-t border-gray-100 pt-3">
+        <p class="text-xs text-gray-500 font-semibold mb-1">Full result:</p>
+        <pre class="text-xs text-gray-600 bg-gray-50 rounded p-3 overflow-x-auto max-h-64 overflow-y-auto">${esc(resultJson)}</pre>
+      </div>
+    </div>`;
+  return wrapper;
+}
+
+function summarizeResult(toolName, result) {
+  if (result.error) return `Error: ${result.error}`;
+
+  switch (toolName) {
+    case "get_transaction_history": {
+      const n = result.count || (result.transactions || []).length;
+      return `Returned ${n} transaction(s)`;
+    }
+    case "get_account_balances": {
+      const total = result.total_balance || 0;
+      return `Total balance: $${total.toLocaleString("en-US", { minimumFractionDigits: 2 })} across ${(result.accounts || []).length} account(s)`;
+    }
+    case "get_budgets": {
+      const b = result.budgets || [];
+      return b.length ? `${b.length} budget(s): ${b.map(x => x.category).join(", ")}` : "No budgets set";
+    }
+    case "get_spending_by_category": {
+      const cats = Object.keys(result.categories || {});
+      const total = result.total_spending || 0;
+      return `$${total.toLocaleString("en-US", { minimumFractionDigits: 2 })} across ${cats.length} categor${cats.length === 1 ? "y" : "ies"}`;
+    }
+    case "get_financial_summary": {
+      return `Income: $${(result.monthly_income || 0).toLocaleString()}, Savings goal: $${(result.savings_goal || 0).toLocaleString()}`;
+    }
+    default:
+      return "Completed";
+  }
+}
+
+function toggleToolDetail(header) {
+  const body = header.nextElementSibling;
+  const chevron = header.querySelector(".tool-chevron");
+  const isOpen = body.style.maxHeight !== "0px" && body.style.maxHeight !== "";
+  body.style.maxHeight = isOpen ? "0px" : "500px";
+  chevron.style.transform = isOpen ? "" : "rotate(180deg)";
+}
+
+// ── Chat UI helpers ────────────────────────────────────────────────
 
 function appendChatBubble(role, content) {
   const container = document.getElementById("chat-messages");
@@ -430,36 +276,8 @@ function logout() {
   window.location.href = "index.html";
 }
 
-// ── Helpers ────────────────────────────────────────────────────────
-
-function formatMoney(n) {
-  return "$" + Number(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
 function esc(str) {
   const d = document.createElement("div");
   d.textContent = String(str || "");
   return d.innerHTML;
-}
-
-function gaugeColor(score) {
-  if (score >= 75) return "#ef4444";
-  if (score >= 50) return "#f97316";
-  if (score >= 25) return "#eab308";
-  return "#22c55e";
-}
-
-function riskBadgeColor(level) {
-  const m = { critical: "bg-red-100 text-red-700", high: "bg-orange-100 text-orange-700", medium: "bg-yellow-100 text-yellow-700", low: "bg-green-100 text-green-700" };
-  return m[level] || "bg-gray-100 text-gray-600";
-}
-
-function severityDot(s) {
-  const m = { critical: "bg-red-500", high: "bg-orange-500", medium: "bg-yellow-500", low: "bg-green-500" };
-  return m[s] || "bg-gray-400";
-}
-
-function severityText(s) {
-  const m = { critical: "text-red-600", high: "text-orange-600", medium: "text-yellow-600", low: "text-green-600" };
-  return m[s] || "text-gray-500";
 }

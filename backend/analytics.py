@@ -12,7 +12,7 @@ def analyze_transaction_categories(account_id, categories, start_date=None, end_
     transactions = get_transactions(account_id)
     if start_date or end_date:
         transactions = sort_transaction_by_date(transactions, start_date, end_date)
-
+    
     descriptions = [transaction['description'] for transaction in transactions]
     
     context = f"""You are a helpful analyst. Examine the descriptions below and determine which category {categories} they belong in. Output a list of categories in the same order of the descriptions, along with which description they belong to.
