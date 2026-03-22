@@ -10,16 +10,17 @@ import json
 from openai import OpenAI
 from dotenv import load_dotenv
 from db import get_supabase
-from helpers import get_user_budgets, get_transaction_history
+from helpers import get_user_budgets, get_transaction_history, create_budget
 
 load_dotenv()
 
 _client = None
 
-SYSTEM_PROMPT = """You are a real-time financial copilot. You help users understand their finances and make better spending decisions.
+SYSTEM_PROMPT = """You are BudgetLess, a real-time financial assistant. You help users understand their finances and make better spending decisions.
 
 Rules:
 - Use your tools to look up real data before answering. NEVER guess or fabricate numbers.
+- For budgets: use get_budget_history to list them; use set_budget to create or update a budget (same category updates the existing row). Dates must be YYYY-MM-DD.
 - Be concise and direct (3-5 sentences).
 - Give specific, actionable advice grounded in the data you retrieved.
 - Never give investment advice (buy/sell stocks).
@@ -46,145 +47,127 @@ TOOLS = [
             },
         },
     },
-    # {
-    #     "type": "function",
-    #     "function": {
-    #         "name": "get_account_balances",
-    #         "description": "Get the user's account balances. Returns each account's type and current balance, plus total balance.",
-    #         "parameters": {
-    #             "type": "object",
-    #             "properties": {},
-    #             "required": [],
-    #         },
-    #     },
-    # },
-    # {
-    #     "type": "function",
-    #     "function": {
-    #         "name": "get_budgets",
-    #         "description": "Get the user's budgets. Returns each budget's category, spending limit (amount), start and end dates.",
-    #         "parameters": {
-    #             "type": "object",
-    #             "properties": {},
-    #             "required": [],
-    #         },
-    #     },
-    # },
-    # {
-    #     "type": "function",
-    #     "function": {
-    #         "name": "get_spending_by_category",
-    #         "description": "Calculate total spending grouped by transaction description/category over recent transactions.",
-    #         "parameters": {
-    #             "type": "object",
-    #             "properties": {
-    #                 "limit": {
-    #                     "type": "integer",
-    #                     "description": "Number of recent transactions to analyze (default 50)",
-    #                 },
-    #             },
-    #             "required": [],
-    #         },
-    #     },
-    # },
-    # {
-    #     "type": "function",
-    #     "function": {
-    #         "name": "get_financial_summary",
-    #         "description": "Get the user's financial profile including monthly income, monthly expenses target, savings goal, current savings, and debt.",
-    #         "parameters": {
-    #             "type": "object",
-    #             "properties": {},
-    #             "required": [],
-    #         },
-    #     },
-    # },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_budget_history",
+            "description": "List all of the user's budgets from Supabase (spending limits by category), most recently created first. Each row includes category, amount limit, start/end dates, and when it was created.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_budget",
+            "description": "Create a new budget or update an existing one for the same category. Writes to Supabase. If a budget already exists for this category, it is updated.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "category": {
+                        "type": "string",
+                        "description": "Budget category name (e.g. food, transport, shopping). Must match transaction categories for alerts to work.",
+                    },
+                    "amount": {
+                        "type": "number",
+                        "description": "Spending limit in dollars for the period",
+                    },
+                    "start_date": {
+                        "type": "string",
+                        "description": "Period start as YYYY-MM-DD",
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "Period end as YYYY-MM-DD",
+                    },
+                    "account_id": {
+                        "type": "string",
+                        "description": "Optional Supabase account UUID to scope this budget to one account",
+                    },
+                },
+                "required": ["category", "amount", "start_date", "end_date"],
+            },
+        },
+    },
 ]
 
 # ── Tool implementations ────────────────────────────────────────────
 
 def _exec_get_transaction_history(user_id, args):
-    limit = args.get("limit", 20)
+    try:
+        limit = int(args.get("limit", 20))
+    except (TypeError, ValueError):
+        limit = 20
+    limit = max(1, min(limit, 100))
     txns = get_transaction_history(user_id, limit=limit)
     return {"transactions": txns, "count": len(txns)}
 
 
-# def _exec_get_account_balances(user_id, _args):
-#     sb = get_supabase()
-#     accounts = sb.table("accounts").select("type, balance").eq("user_id", user_id).execute()
-#     acct_list = accounts.data or []
-#     total = sum(float(a.get("balance") or 0) for a in acct_list)
-#     return {
-#         "accounts": [{"type": a["type"], "balance": float(a.get("balance") or 0)} for a in acct_list],
-#         "total_balance": total,
-#     }
+def _exec_get_budget_history(user_id, _args):
+    budgets = get_user_budgets(user_id)
+    rows = []
+    for b in budgets:
+        rows.append({
+            "id": b.get("id"),
+            "category": b.get("category"),
+            "amount": float(b.get("amount") or 0),
+            "start_date": b.get("start_date"),
+            "end_date": b.get("end_date"),
+            "account_id": b.get("account_id"),
+            "created_at": b.get("created_at"),
+        })
+    rows.sort(key=lambda x: str(x.get("created_at") or ""), reverse=True)
+    return {"budgets": rows, "count": len(rows)}
 
 
-# def _exec_get_budgets(user_id, _args):
-#     budgets = get_user_budgets(user_id)
-#     return {
-#         "budgets": [
-#             {
-#                 "category": b["category"],
-#                 "amount": float(b.get("amount") or 0),
-#                 "start_date": b.get("start_date"),
-#                 "end_date": b.get("end_date"),
-#             }
-#             for b in budgets
-#         ],
-#     }
-
-
-# def _exec_get_spending_by_category(user_id, args):
-#     sb = get_supabase()
-#     limit = args.get("limit", 50)
-
-#     accounts = sb.table("accounts").select("id").eq("user_id", user_id).execute()
-#     account_ids = [a["id"] for a in (accounts.data or [])]
-#     if not account_ids:
-#         return {"categories": {}, "total_spending": 0}
-
-#     txns = (
-#         sb.table("transactions")
-#         .select("amount, type, description")
-#         .in_("account_id", account_ids)
-#         .eq("type", "purchase")
-#         .order("transaction_date", desc=True)
-#         .limit(limit)
-#         .execute()
-#     )
-
-#     by_cat = {}
-#     for t in (txns.data or []):
-#         desc = (t.get("description") or "Other").strip()
-#         by_cat[desc] = by_cat.get(desc, 0) + float(t["amount"])
-
-#     sorted_cats = dict(sorted(by_cat.items(), key=lambda x: -x[1]))
-#     return {"categories": sorted_cats, "total_spending": sum(by_cat.values())}
-
-
-# def _exec_get_financial_summary(user_id, _args):
-#     sb = get_supabase()
-#     user = sb.table("users").select("*").eq("id", user_id).execute()
-#     if not user.data:
-#         return {"error": "User not found"}
-#     u = user.data[0]
-#     return {
-#         "first_name": u.get("first_name"),
-#         "monthly_income": float(u.get("monthly_income") or 0),
-#         "monthly_expenses": float(u.get("monthly_expenses") or 0),
-#         "savings_goal": float(u.get("savings_goal") or 0),
-#         "current_savings": float(u.get("current_savings") or 0),
-#         "debt": float(u.get("debt") or 0),
-#     }
+def _exec_set_budget(user_id, args):
+    category = (args.get("category") or "").strip()
+    if not category:
+        return {"error": "category is required"}
+    try:
+        amount = float(args["amount"])
+    except (KeyError, TypeError, ValueError):
+        return {"error": "amount must be a number"}
+    start_date = args.get("start_date")
+    end_date = args.get("end_date")
+    if not start_date or not end_date:
+        return {"error": "start_date and end_date are required (YYYY-MM-DD)"}
+    account_id = args.get("account_id")
+    if account_id is not None and account_id == "":
+        account_id = None
+    try:
+        row = create_budget(
+            user_id,
+            category,
+            amount,
+            str(start_date),
+            str(end_date),
+            account_id=account_id,
+        )
+        if not row:
+            return {"error": "Failed to save budget to database"}
+        return {
+            "saved": True,
+            "budget": {
+                "id": row.get("id"),
+                "category": row.get("category"),
+                "amount": float(row.get("amount") or 0),
+                "start_date": row.get("start_date"),
+                "end_date": row.get("end_date"),
+                "account_id": row.get("account_id"),
+            },
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 
 TOOL_DISPATCH = {
     "get_transaction_history": _exec_get_transaction_history,
-    # "get_account_balances": _exec_get_account_balances,
-    # "get_budgets": _exec_get_budgets,
-    # "get_spending_by_category": _exec_get_spending_by_category,
-    # "get_financial_summary": _exec_get_financial_summary,
+    "get_budget_history": _exec_get_budget_history,
+    "set_budget": _exec_set_budget,
 }
 
 # ── Chat loop ───────────────────────────────────────────────────────
