@@ -1,5 +1,6 @@
 from flask import Blueprint, request, jsonify
 from db import get_supabase
+from helpers import get_user_budgets, create_budget
 
 budgets_bp = Blueprint("budgets", __name__)
 
@@ -12,23 +13,16 @@ def upsert_budget(user_id):
     if missing:
         return jsonify({"error": f"Missing required fields: {missing}"}), 400
 
-    row = {
-        "user_id": user_id,
-        "category": data["category"],
-        "amount": data["amount"],
-        "start_date": data["start_date"],
-        "end_date": data["end_date"],
-        "account_id": data.get("account_id"),
-    }
-
     try:
-        result = (
-            get_supabase()
-            .table("budgets")
-            .upsert(row, on_conflict="user_id,category")
-            .execute()
+        budget = create_budget(
+            user_id,
+            data["category"],
+            data["amount"],
+            data["start_date"],
+            data["end_date"],
+            account_id=data.get("account_id"),
         )
-        return jsonify(result.data[0]), 201
+        return jsonify(budget), 201
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -36,14 +30,7 @@ def upsert_budget(user_id):
 @budgets_bp.route("/api/users/<user_id>/budgets", methods=["GET"])
 def list_budgets(user_id):
     try:
-        result = (
-            get_supabase()
-            .table("budgets")
-            .select("*")
-            .eq("user_id", user_id)
-            .execute()
-        )
-        return jsonify(result.data)
+        return jsonify(get_user_budgets(user_id))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
