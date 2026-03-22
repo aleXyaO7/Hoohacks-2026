@@ -212,28 +212,73 @@ def create_budget(user_id, category, amount, start_date, end_date, account_id=No
         result = sb.table("budgets").insert(row).execute()
     return result.data[0] if result.data else None
 
+
+def add_nessie_purchase_and_sync(
+    nessie_account_id,
+    merchant_id,
+    description,
+    amount,
+    date,
+):
+    """Create a Nessie purchase, then run a full Nessie→Supabase sync for that account's user.
+
+    Resolves the Supabase user via ``accounts.nessie_account_id`` (must already be linked).
+
+    Args:
+        nessie_account_id: Nessie account ``_id`` (same value stored in ``accounts.nessie_account_id``).
+        merchant_id: Nessie merchant ``_id``.
+        description: Purchase description.
+        amount: Dollar amount (number).
+        date: Purchase date ``YYYY-MM-DD``.
+
+    Returns:
+        dict with ``success`` (bool). On failure: ``error`` (str), optionally ``user_id``.
+        On success: ``user_id`` and ``sync`` (return value of :func:`sync.sync_user`).
+    """
+    from nessie import add_transaction
+    from sync import sync_user
+
+    if not nessie_account_id:
+        return {"success": False, "error": "nessie_account_id is required"}
+
+    sb = get_supabase()
+    acc = (
+        sb.table("accounts")
+        .select("id, user_id")
+        .eq("nessie_account_id", str(nessie_account_id))
+        .limit(1)
+        .execute()
+    )
+    if not acc.data:
+        return {
+            "success": False,
+            "error": "No Supabase account linked to this Nessie account id.",
+        }
+    user_id = acc.data[0]["user_id"]
+
+    created = add_transaction(
+        str(nessie_account_id),
+        merchant_id,
+        description,
+        amount,
+        date,
+    )
+    if not created:
+        return {
+            "success": False,
+            "error": "Nessie did not create the purchase (check API response / logs).",
+            "user_id": user_id,
+        }
+
+    summary = sync_user(user_id)
+    return {"success": True, "user_id": user_id, "sync": summary}
+
+
 if __name__ == "__main__":
-    import random
-
-    USER_ID = "e502c25b-6306-4944-bc77-728048e44a3f"
-
-    months = [
-        ("2024-01-01", "2024-01-31", random.randint(200, 400)),
-        ("2024-02-01", "2024-02-29", random.randint(200, 400)),
-        ("2024-03-01", "2024-03-31", random.randint(200, 400)),
-        ("2024-04-01", "2024-04-30", random.randint(200, 400)),
-        ("2024-05-01", "2024-05-31", random.randint(200, 400)),
-        ("2024-06-01", "2024-06-30", random.randint(200, 400)),
-        ("2024-07-01", "2024-07-31", random.randint(200, 400)),
-        ("2024-08-01", "2024-08-31", random.randint(200, 400)),
-        ("2024-09-01", "2024-09-30", random.randint(200, 400)),
-        ("2024-10-01", "2024-10-31", random.randint(200, 400)),
-        ("2024-11-01", "2024-11-30", random.randint(200, 400)),
-        ("2024-12-01", "2024-12-31", random.randint(200, 400)),
-    ]
-
-    for start, end, amount in months:
-        b = create_budget(USER_ID, "food", amount, start, end)
-        print(f"  Created: food ${amount} ({start} to {end})")
-
-    print(f"\nDone — inserted {len(months)} food budgets for 2024.")
+    result = add_nessie_purchase_and_sync(
+        nessie_account_id="69bf074695150878ea0006d3",
+        merchant_id="57cf75cea73e494d8675ec4a",
+        description="Erwhon Shopping",
+        amount=500,
+        date="2026-03-22",
+    )

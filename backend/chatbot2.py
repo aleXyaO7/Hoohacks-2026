@@ -11,6 +11,7 @@ from openai import OpenAI
 from dotenv import load_dotenv
 from db import get_supabase
 from helpers import get_user_budgets, get_transaction_history, create_budget
+from analytics import analyze_transaction_categories
 
 load_dotenv()
 
@@ -21,6 +22,8 @@ SYSTEM_PROMPT = """You are BudgetLess, a real-time financial assistant. You help
 Rules:
 - Use your tools to look up real data before answering. NEVER guess or fabricate numbers.
 - For budgets: use get_budget_history to list them; use set_budget to create or update a budget (same category updates the existing row). Dates must be YYYY-MM-DD.
+- Use analyze_transaction_categories when the user wants spending grouped by category from Nessie purchase descriptions (LLM labels each purchase). Uses the linked bank (Nessie) account; optional date range.
+- If the user's message contains the phrase "add groceries" (any case), use the 5-category breakdown (includes **groceries**) when calling analyze_transaction_categories—omit a custom categories list so the tool applies that mode.
 - Be concise and direct (3-5 sentences).
 - Give specific, actionable advice grounded in the data you retrieved.
 - Never give investment advice (buy/sell stocks).
@@ -89,6 +92,49 @@ TOOLS = [
                     },
                 },
                 "required": ["category", "amount", "start_date", "end_date"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "analyze_transaction_categories",
+            "description": (
+                "Load purchases from the Nessie API for the user's linked account, then use an LLM to classify "
+                "each transaction description into spending categories. Returns per-category totals and counts. "
+                "Use when the user asks how spending breaks down by category from descriptions, or to compare "
+                "to budgets conceptually. Does not use Supabase category tags—re-classifies from Nessie text."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "categories": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": (
+                            "Category names to assign (e.g. food, rent/housing, entertainment, miscellaneous). "
+                            "Default: food, rent/housing, entertainment, miscellaneous. "
+                            "If the user's message includes the phrase \"add groceries\", the server uses a fixed "
+                            "5-category list (groceries + food + rent/housing + entertainment + miscellaneous) "
+                            "and ignores this field unless you need to override."
+                        ),
+                    },
+                    "start_date": {
+                        "type": "string",
+                        "description": "Optional inclusive start YYYY-MM-DD (filter purchases)",
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "Optional inclusive end YYYY-MM-DD (filter purchases)",
+                    },
+                    "supabase_account_id": {
+                        "type": "string",
+                        "description": (
+                            "Optional Supabase accounts.id UUID. If omitted, uses the user's first linked account."
+                        ),
+                    },
+                },
+                "required": [],
             },
         },
     },
@@ -164,10 +210,99 @@ def _exec_set_budget(user_id, args):
         return {"error": str(e)}
 
 
+DEFAULT_ANALYSIS_CATEGORIES = [
+    "food",
+    "rent/housing",
+    "entertainment",
+    "miscellaneous",
+]
+
+# Used when the user message contains "add groceries" (matches analytics 5-bucket mode → categories2.txt).
+ADD_GROCERIES_ANALYSIS_CATEGORIES = [
+    "groceries",
+    "food",
+    "rent/housing",
+    "entertainment",
+    "miscellaneous",
+]
+
+
+def _user_wants_groceries_breakdown(trigger_message):
+    return "add groceries" in (trigger_message or "").lower()
+
+
+def _exec_analyze_transaction_categories(user_id, args, trigger_message=None):
+    sb = get_supabase()
+    acct_id = args.get("supabase_account_id")
+    q = sb.table("accounts").select("id, nessie_account_id").eq("user_id", user_id)
+    if acct_id:
+        q = q.eq("id", acct_id)
+    res = q.limit(1).execute()
+    if not res.data:
+        return {"error": "No linked account found for this user."}
+    row = res.data[0]
+    nessie_aid = row.get("nessie_account_id")
+    if not nessie_aid:
+        return {"error": "Account has no Nessie id; cannot load purchases from Nessie."}
+
+    if _user_wants_groceries_breakdown(trigger_message):
+        categories = list(ADD_GROCERIES_ANALYSIS_CATEGORIES)
+    else:
+        raw_cats = args.get("categories")
+        if isinstance(raw_cats, list) and len(raw_cats) > 0:
+            categories = [str(c).strip() for c in raw_cats if str(c).strip()]
+        else:
+            categories = list(DEFAULT_ANALYSIS_CATEGORIES)
+        if not categories:
+            categories = list(DEFAULT_ANALYSIS_CATEGORIES)
+
+    start_date = args.get("start_date") or None
+    end_date = args.get("end_date") or None
+    if start_date:
+        start_date = str(start_date)[:10]
+    if end_date:
+        end_date = str(end_date)[:10]
+
+    try:
+        raw = analyze_transaction_categories(
+            nessie_aid, categories, start_date=start_date, end_date=end_date
+        )
+    except Exception as e:
+        return {"error": str(e)}
+
+    summary = {}
+    total = 0.0
+    for c, v in raw.items():
+        txns = v.get("transaction") or []
+        s = float(v.get("sum") or 0)
+        total += s
+        summary[c] = {
+            "sum": round(s, 2),
+            "count": len(txns),
+            "sample_descriptions": [
+                (t.get("description") or "")[:120] for t in txns[:6]
+            ],
+        }
+
+    out = {
+        "nessie_account_id": nessie_aid,
+        "supabase_account_id": row.get("id"),
+        "start_date": start_date,
+        "end_date": end_date,
+        "categories": summary,
+        "total_analyzed_spend": round(total, 2),
+        "note": "Totals are Nessie purchase amounts only (deposits excluded).",
+    }
+    if _user_wants_groceries_breakdown(trigger_message):
+        out["category_mode"] = "add_groceries_5"
+    return out
+
+
 TOOL_DISPATCH = {
     "get_transaction_history": _exec_get_transaction_history,
     "get_budget_history": _exec_get_budget_history,
     "set_budget": _exec_set_budget,
+    "analyze_transaction_categories": _exec_analyze_transaction_categories,
 }
 
 # ── Chat loop ───────────────────────────────────────────────────────
@@ -225,7 +360,12 @@ def chat(user_id, message, channel="web"):
 
                 executor = TOOL_DISPATCH.get(fn_name)
                 if executor:
-                    result = executor(user_id, fn_args)
+                    if fn_name == "analyze_transaction_categories":
+                        result = executor(
+                            user_id, fn_args, trigger_message=message
+                        )
+                    else:
+                        result = executor(user_id, fn_args)
                 else:
                     result = {"error": f"Unknown tool: {fn_name}"}
 

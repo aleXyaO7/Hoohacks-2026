@@ -15,6 +15,7 @@ function openSettings() {
   if (t) t.setAttribute("aria-expanded", "true");
   setDefaultBudgetFormDates();
   loadBudgets();
+  loadUserPhoneIntoSettings();
 }
 
 function closeSettings() {
@@ -29,6 +30,63 @@ document.addEventListener("keydown", (e) => {
   const panel = document.getElementById("settings-panel");
   if (panel && !panel.classList.contains("hidden")) closeSettings();
 });
+
+// ── Phone (Settings, for WhatsApp alerts) ─────────────────────────
+
+async function loadUserPhoneIntoSettings() {
+  const input = document.getElementById("settings-phone");
+  if (!input) return;
+  try {
+    const resp = await fetch(`${API}/api/users/${userId}`);
+    const data = await resp.json();
+    if (resp.ok && data && data.phone) input.value = data.phone;
+  } catch { /* ignore */ }
+}
+
+const phoneForm = document.getElementById("phone-form");
+if (phoneForm) {
+  phoneForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const input = document.getElementById("settings-phone");
+    const msgEl = document.getElementById("phone-form-message");
+    const phone = input?.value.trim() || "";
+    if (!phone) {
+      if (msgEl) {
+        msgEl.textContent = "Enter a phone number.";
+        msgEl.className = "text-xs mt-2 min-h-[1.25em] text-red-600";
+      }
+      return;
+    }
+    if (msgEl) {
+      msgEl.textContent = "Saving…";
+      msgEl.className = "text-xs mt-2 min-h-[1.25em] text-zinc-600";
+    }
+    try {
+      const resp = await fetch(`${API}/api/users/${userId}/phone`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) {
+        if (msgEl) {
+          msgEl.textContent = data.error || "Save failed";
+          msgEl.className = "text-xs mt-2 min-h-[1.25em] text-red-600";
+        }
+        return;
+      }
+      if (msgEl) {
+        msgEl.textContent = "Saved. Refresh will send WhatsApp alerts to this number.";
+        msgEl.className = "text-xs mt-2 min-h-[1.25em] text-emerald-600";
+      }
+    } catch {
+      if (msgEl) {
+        msgEl.textContent = "Network error.";
+        msgEl.className = "text-xs mt-2 min-h-[1.25em] text-red-600";
+      }
+    }
+  });
+}
 
 // ── Budgets (Settings) ────────────────────────────────────────────
 
@@ -243,9 +301,63 @@ function renderActiveBudgets(items) {
   });
 }
 
-async function refreshTransactionsAndActiveBudgets() {
+async function refreshDashboard() {
+  const checksEl = document.getElementById("budget-analytics-checks");
+  if (checksEl) {
+    checksEl.classList.remove("hidden");
+    checksEl.innerHTML =
+      '<p class="text-zinc-500 italic">Running budget checks…</p>';
+  }
+  try {
+    const resp = await fetch(`${API}/api/users/${userId}/dashboard/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (resp.ok) {
+      renderBudgetAnalyticsChecks(data);
+    } else if (checksEl) {
+      checksEl.innerHTML = `<p class="text-red-600">${esc(data.error || "Budget checks failed")}</p>`;
+    }
+  } catch {
+    if (checksEl) {
+      checksEl.innerHTML =
+        '<p class="text-red-600">Could not reach server for budget checks.</p>';
+    }
+  }
   await loadTransactions();
   await loadActiveBudgets();
+}
+
+function renderBudgetAnalyticsChecks(data) {
+  const el = document.getElementById("budget-analytics-checks");
+  if (!el) return;
+  const rows = Array.isArray(data.budget_analytics) ? data.budget_analytics : [];
+  if (!rows.length) {
+    el.innerHTML =
+      '<p class="text-zinc-500">No active budgets today — analytics checks skipped.</p>';
+    el.classList.remove("hidden");
+    return;
+  }
+  el.classList.remove("hidden");
+  el.innerHTML = rows
+    .map((r) => {
+      if (r.error) {
+        return `<p><span class="font-semibold">${esc(r.category)}</span>: <span class="text-red-600">${esc(r.error)}</span></p>`;
+      }
+      const over = r.check_budget_over === true;
+      const warn = r.check_budget_warnings === true;
+      let extra = "";
+      if (r.alert_sent) extra += ` · WhatsApp: ${esc(r.alert_sent)}`;
+      if (r.alert_skipped === "no_phone_on_user") {
+        extra += ` · <span class="text-amber-800">no phone on file — add one in Settings → WhatsApp alerts</span>`;
+      } else if (r.alert_skipped) {
+        extra += ` · ${esc(r.alert_skipped)}`;
+      }
+      if (r.alert_error) extra += ` · alert: <span class="text-amber-700">${esc(r.alert_error)}</span>`;
+      return `<p><span class="font-semibold">${esc(r.category)}</span>: over=${over}; warning=${warn}${extra}</p>`;
+    })
+    .join("");
 }
 
 // ── Transactions ──────────────────────────────────────────────────
@@ -460,6 +572,15 @@ function summarizeResult(toolName, result) {
     }
     case "get_financial_summary": {
       return `Income: $${(result.monthly_income || 0).toLocaleString()}, Savings goal: $${(result.savings_goal || 0).toLocaleString()}`;
+    }
+    case "analyze_transaction_categories": {
+      const cats = result.categories || {};
+      const parts = Object.entries(cats).map(
+        ([k, v]) => `${k}: $${Number(v.sum || 0).toFixed(2)} (${v.count || 0} txns)`
+      );
+      const total = result.total_analyzed_spend;
+      const t = total != null ? `Total ~$${Number(total).toFixed(2)}` : "";
+      return parts.length ? `${parts.join(" · ")}${t ? ` — ${t}` : ""}` : "No purchases in range";
     }
     default:
       return "Completed";

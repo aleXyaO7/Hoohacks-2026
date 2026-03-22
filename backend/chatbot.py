@@ -28,12 +28,22 @@ import threading
 app = Flask(__name__)
 
 # ── Credentials ────────────────────────────────────────────────────────────────
-TWILIO_ACCOUNT_SID     = "PASTE_YOUR_ACCOUNT_SID_HERE"   # starts with AC
-TWILIO_AUTH_TOKEN      = "PASTE_YOUR_AUTH_TOKEN_HERE"
-TWILIO_WHATSAPP_NUMBER = "whatsapp:+14155238886"          # always this for sandbox
+TWILIO_ACCOUNT_SID     = os.environ.get("TWILIO_ACCOUNT_SID", "PASTE_YOUR_ACCOUNT_SID_HERE")
+TWILIO_AUTH_TOKEN      = os.environ.get("TWILIO_AUTH_TOKEN", "PASTE_YOUR_AUTH_TOKEN_HERE")
+TWILIO_WHATSAPP_NUMBER = os.environ.get("TWILIO_WHATSAPP_NUMBER", "whatsapp:+14155238886")
 OPENAI_API_KEY         = os.environ.get("OPENAI_API_KEY", "PASTE_YOUR_OPENAI_KEY_HERE")
 
-twilio_client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+
+def _get_twilio_client():
+    """Return a Twilio client if credentials look configured; else None."""
+    sid = (TWILIO_ACCOUNT_SID or "").strip()
+    token = (TWILIO_AUTH_TOKEN or "").strip()
+    if not sid or not token or "PASTE" in sid.upper():
+        return None
+    return Client(sid, token)
+
+
+twilio_client = _get_twilio_client()
 openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
 # Last inbound sender cache (for optional alert fallback)
@@ -351,13 +361,17 @@ def send_whatsapp_alert(to_phone: str | None, message: str):
     to_phone: just the number e.g. "+15718881874"
     User must have joined the sandbox first.
     """
+    client = _get_twilio_client()
+    if not client:
+        raise ValueError("Twilio is not configured (set TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN).")
+
     target = to_phone or _get_last_inbound_sender()
     if not target:
         raise ValueError(
             "No destination phone available. Pass to_phone, or receive at least one inbound /sms first."
         )
 
-    twilio_client.messages.create(
+    client.messages.create(
         body=message,
         from_=TWILIO_WHATSAPP_NUMBER,
         to=_normalize_whatsapp_to(target)
@@ -370,31 +384,46 @@ def send_over_budget_alert(
     purchase_amount: float,
     budget_limit: float,
     category: str,
+    alert_kind: str = "over",
 ):
     """
     Send a proactive WhatsApp alert when a purchase exceeds the recommended
-    budget for that category.
+    budget for that category, or when a pace / similarity warning fires.
 
     Args:
         to_phone:        user's phone number e.g. "+15718881874"
-        merchant:        name of the merchant e.g. "Starbucks"
-        purchase_amount: how much the purchase was e.g. 52.40
-        budget_limit:    the recommended/set budget for this category e.g. 30.00
+        merchant:        label for the spend context e.g. "Starbucks" or "food spending"
+        purchase_amount: amount to reference (e.g. period spend so far) e.g. 52.40
+        budget_limit:    the budget limit for this category e.g. 30.00
         category:        spending category e.g. "food"
+        alert_kind:      ``"over"`` (over budget) or ``"warning"`` (pace vs similar periods)
 
     Example call:
         send_over_budget_alert("+15718881874", "Starbucks", 52.40, 30.00, "food")
     """
+    client = _get_twilio_client()
+    if not client:
+        raise ValueError("Twilio is not configured (set TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN).")
+
     overage = purchase_amount - budget_limit
 
-    prompt = (
-        f"Write a short, friendly WhatsApp alert message telling the user that "
-        f"their recent purchase of ${purchase_amount:.2f} at {merchant} has exceeded "
-        f"their recommended {category} budget of ${budget_limit:.2f} by ${overage:.2f}. "
-        f"Suggest they be mindful of further spending in this category. "
-        f"Keep it to 2-3 sentences. Use 1 emoji. "
-        f"Use WhatsApp bold (*text*) for all dollar amounts and the merchant name."
-    )
+    if (alert_kind or "over").lower() == "warning":
+        prompt = (
+            f"Write a short, friendly WhatsApp alert about spending *pace* for their "
+            f"*{category}* budget. They have spent *${purchase_amount:.2f}* so far this period "
+            f"against a limit of *${budget_limit:.2f}*. Their pace is tracking higher than "
+            f"similar past budget periods—encourage mindfulness without being harsh. "
+            f"2-3 sentences, 1 emoji. Use WhatsApp bold (*text*) for dollar amounts."
+        )
+    else:
+        prompt = (
+            f"Write a short, friendly WhatsApp alert message telling the user that "
+            f"their recent purchase of ${purchase_amount:.2f} at {merchant} has exceeded "
+            f"their recommended {category} budget of ${budget_limit:.2f} by ${overage:.2f}. "
+            f"Suggest they be mindful of further spending in this category. "
+            f"Keep it to 2-3 sentences. Use 1 emoji. "
+            f"Use WhatsApp bold (*text*) for all dollar amounts and the merchant name."
+        )
 
     message = ask_openai(prompt, max_tokens=150)
 
@@ -404,7 +433,7 @@ def send_over_budget_alert(
             "No destination phone available. Pass to_phone, or receive at least one inbound /sms first."
         )
 
-    twilio_client.messages.create(
+    client.messages.create(
         body=message,
         from_=TWILIO_WHATSAPP_NUMBER,
         to=_normalize_whatsapp_to(target)

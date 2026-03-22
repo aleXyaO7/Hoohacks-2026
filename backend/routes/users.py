@@ -131,6 +131,28 @@ def get_user_by_nessie(nessie_id):
         return jsonify({"error": str(e)}), 500
 
 
+@users_bp.route("/api/users/<user_id>/phone", methods=["PUT"])
+def update_phone(user_id):
+    """Set ``phone`` for WhatsApp / SMS alerts (E.164 recommended, e.g. +15551234567)."""
+    data = request.get_json() or {}
+    phone = (data.get("phone") or "").strip()
+    if not phone:
+        return jsonify({"error": "phone is required"}), 400
+    try:
+        result = (
+            get_supabase()
+            .table("users")
+            .update({"phone": phone})
+            .eq("id", user_id)
+            .execute()
+        )
+        if not result.data:
+            return jsonify({"error": "User not found"}), 404
+        return jsonify(result.data[0])
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @users_bp.route("/api/users/<user_id>/goals", methods=["PUT"])
 def update_goals(user_id):
     data = request.get_json()
