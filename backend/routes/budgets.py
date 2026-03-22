@@ -7,14 +7,18 @@ budgets_bp = Blueprint("budgets", __name__)
 @budgets_bp.route("/api/users/<user_id>/budgets", methods=["POST"])
 def upsert_budget(user_id):
     data = request.get_json()
-    if "category" not in data:
-        return jsonify({"error": "category is required"}), 400
+    required = ["category", "amount", "start_date", "end_date"]
+    missing = [f for f in required if f not in data]
+    if missing:
+        return jsonify({"error": f"Missing required fields: {missing}"}), 400
 
     row = {
         "user_id": user_id,
         "category": data["category"],
-        "weekly_limit": data.get("weekly_limit"),
-        "monthly_limit": data.get("monthly_limit"),
+        "amount": data["amount"],
+        "start_date": data["start_date"],
+        "end_date": data["end_date"],
+        "account_id": data.get("account_id"),
     }
 
     try:

@@ -1,53 +1,88 @@
 """Conversation Agent
 
-Handles user messages (from web chat or SMS webhook).
-Retrieves the user's financial context, recent alerts, and chat history,
-then uses the LLM to generate a contextual response.
+Orchestrates a multi-agent reasoning pipeline for each user message:
+  1. Context Gathering — pull financial data from Supabase
+  2. Goals Agent — evaluate against user's financial goals
+  3. Tradeoffs Agent — find alternatives and cuts
+  4. Response Agent (LLM) — synthesize into a final response
 
-Falls back to canned responses if the LLM is unavailable.
+Each step is traced so the frontend can display the reasoning loop.
 """
 
 import os
+import time
+from datetime import datetime, timezone
 from openai import OpenAI
 from dotenv import load_dotenv
+
 from db import get_supabase
-from agents.risk_agent import assess_risk
+from agents.goals_agent import evaluate_against_goals
+from agents.tradeoffs_agent import find_tradeoffs
 
 load_dotenv()
 
 _client = None
 
-SYSTEM_PROMPT = """You are a real-time financial copilot. The user is chatting with you about their finances.
+SYSTEM_PROMPT = """You are a real-time financial copilot. You have access to the outputs
+of two specialist agents — a Goals Agent and a Tradeoffs Agent — plus the user's
+full financial context.
 
 Rules:
-- Be concise and direct
-- Always reference actual numbers from their financial context
+- Synthesize the goals analysis and tradeoff suggestions into a single coherent response
+- Be concise and direct (3-5 sentences for web, 2-3 for SMS)
+- Always reference actual numbers from the context
 - Give specific, actionable advice
-- If asked "can I afford this?", calculate based on their balance, upcoming expenses, and budget
-- If asked "why did you alert me?", explain the specific risk factors
-- If asked "what should I cut?", identify their highest spending categories
-- Never fabricate numbers — only use what's in the context
-- Never give investment advice (buy/sell stocks)
-- Supportive tone, not judgmental
-- For SMS channel: keep responses to 2-3 sentences max
-- For web channel: can be slightly more detailed (3-5 sentences)"""
+- If the tradeoffs agent found alternatives, mention the best 1-2
+- If the goals agent found conflicts, flag them clearly
+- Never fabricate numbers — only use what's provided
+- Never give investment advice
+- Supportive tone, not judgmental"""
+
+
+def _ts():
+    return datetime.now(timezone.utc).isoformat()
 
 
 def handle_message(user_id, message, channel="web"):
-    """Process an incoming user message and generate a response.
-
-    Args:
-        user_id: The user's Supabase ID
-        message: The user's message text
-        channel: "web" or "sms"
+    """Process a user message through the full agent pipeline.
 
     Returns:
-        dict with "response" (str) and "context_used" (dict)
+        {
+            "response": str,
+            "trace": [ { agent, status, ... } ... ],
+        }
     """
     sb = get_supabase()
+    trace = []
 
-    # Gather financial context
+    # ── Step 1: Context Gathering Agent ─────────────────────────
+    t0 = time.time()
     context = _build_context(sb, user_id)
+    dur = int((time.time() - t0) * 1000)
+
+    user_info = context.get("user", {})
+    n_txns = len(context.get("recent_transactions", []))
+    balance = context.get("total_balance", 0)
+
+    trace.append({
+        "agent": "Context Gathering Agent",
+        "status": "success",
+        "timestamp": _ts(),
+        "duration_ms": dur,
+        "input_summary": f'User message: "{_truncate(message, 60)}"',
+        "output_summary": (
+            f"Balance: ${balance:,.2f}, {n_txns} recent transactions, "
+            f"{len(context.get('budgets', []))} budget(s)"
+        ),
+        "details": {
+            "balance": balance,
+            "accounts": len(context.get("accounts", [])),
+            "transactions": n_txns,
+            "budgets": len(context.get("budgets", [])),
+            "has_goals": bool(user_info.get("savings_goal")),
+            "has_risk_data": context.get("latest_risk") is not None,
+        },
+    })
 
     # Store the user message
     sb.table("messages").insert({
@@ -57,11 +92,75 @@ def handle_message(user_id, message, channel="web"):
         "content": message,
     }).execute()
 
-    # Get recent conversation history
+    # ── Step 2: Goals Agent ─────────────────────────────────────
+    t0 = time.time()
+    goals_result = evaluate_against_goals(context, message)
+    dur = int((time.time() - t0) * 1000)
+
+    trace.append({
+        "agent": "Goals Agent",
+        "agent_type": "llm",
+        "model": "gpt-4o-mini",
+        "status": "success",
+        "timestamp": _ts(),
+        "duration_ms": dur,
+        "input_summary": (
+            f"Savings goal: ${float(user_info.get('savings_goal') or 0):,.0f}, "
+            f"debt: ${float(user_info.get('debt') or 0):,.0f}"
+        ),
+        "output_summary": goals_result.get("summary", "No goals to evaluate"),
+        "details": {
+            "aligned": goals_result.get("aligned"),
+            "goal_impacts": goals_result.get("goal_impacts", []),
+            "analysis": goals_result.get("analysis", ""),
+        },
+    })
+
+    # ── Step 3: Tradeoffs Agent ─────────────────────────────────
+    t0 = time.time()
+    tradeoffs_result = find_tradeoffs(context, message)
+    dur = int((time.time() - t0) * 1000)
+
+    trace.append({
+        "agent": "Tradeoffs Agent",
+        "agent_type": "llm",
+        "model": "gpt-4o-mini",
+        "status": "success",
+        "timestamp": _ts(),
+        "duration_ms": dur,
+        "input_summary": f"{len(tradeoffs_result.get('cuts', []))} spending areas analyzed",
+        "output_summary": tradeoffs_result.get("summary", "No tradeoffs found"),
+        "details": {
+            "cuts": tradeoffs_result.get("cuts", []),
+            "lowest_impact": tradeoffs_result.get("lowest_impact", ""),
+            "alternatives": tradeoffs_result.get("alternatives", []),
+        },
+    })
+
+    # ── Step 4: Response Synthesis Agent (LLM) ──────────────────
     history = _get_chat_history(sb, user_id, channel, limit=10)
 
-    # Generate response
-    response_text = _generate_response(message, context, history, channel)
+    t0 = time.time()
+    response_text = _generate_response(
+        message, context, goals_result, tradeoffs_result, history, channel
+    )
+    dur = int((time.time() - t0) * 1000)
+
+    trace.append({
+        "agent": "Response Synthesis Agent",
+        "agent_type": "llm",
+        "model": "gpt-4o-mini",
+        "status": "success",
+        "timestamp": _ts(),
+        "duration_ms": dur,
+        "input_summary": "Goals analysis + tradeoffs + context + chat history",
+        "output_summary": _truncate(response_text, 100),
+        "details": {
+            "response_length": len(response_text),
+            "channel": channel,
+            "history_messages": len(history),
+        },
+    })
 
     # Store the assistant response
     sb.table("messages").insert({
@@ -73,12 +172,13 @@ def handle_message(user_id, message, channel="web"):
 
     return {
         "response": response_text,
-        "context_used": context,
+        "trace": trace,
     }
 
 
+# ── Context builder ─────────────────────────────────────────────────
+
 def _build_context(sb, user_id):
-    """Assemble the user's full financial context for the LLM."""
     user = sb.table("users").select("*").eq("id", user_id).execute()
     if not user.data:
         return {}
@@ -88,7 +188,6 @@ def _build_context(sb, user_id):
     account_list = accounts.data or []
     total_balance = sum(float(a.get("balance") or 0) for a in account_list)
 
-    # Latest risk snapshot
     snapshot = (
         sb.table("snapshots")
         .select("*")
@@ -99,24 +198,20 @@ def _build_context(sb, user_id):
     )
     latest_snapshot = snapshot.data[0] if snapshot.data else None
 
-    # Recent transactions
     account_ids = [a["id"] for a in account_list]
     recent_txns = []
     if account_ids:
-        txn_result = (
+        recent_txns = (
             sb.table("transactions")
             .select("*")
             .in_("account_id", account_ids)
             .order("transaction_date", desc=True)
             .limit(15)
             .execute()
-        )
-        recent_txns = txn_result.data
+        ).data
 
-    # Active budgets
-    budgets = sb.table("budgets").select("*").eq("user_id", user_id).execute()
+    budgets = (sb.table("budgets").select("*").eq("user_id", user_id).execute()).data or []
 
-    # Recent alerts
     recent_alerts = (
         sb.table("alerts")
         .select("*")
@@ -124,7 +219,7 @@ def _build_context(sb, user_id):
         .order("sent_at", desc=True)
         .limit(5)
         .execute()
-    )
+    ).data or []
 
     return {
         "user": {
@@ -150,27 +245,18 @@ def _build_context(sb, user_id):
             for t in recent_txns
         ],
         "budgets": [
-            {
-                "category": b["category"],
-                "monthly_limit": b.get("monthly_limit"),
-                "weekly_limit": b.get("weekly_limit"),
-            }
-            for b in (budgets.data or [])
+            {"category": b["category"], "amount": b.get("amount"), "start_date": b.get("start_date"), "end_date": b.get("end_date"), "account_id": b.get("account_id")}
+            for b in budgets
         ],
         "latest_risk": latest_snapshot.get("data") if latest_snapshot else None,
         "recent_alerts": [
-            {
-                "message": a["message"],
-                "risk_level": a.get("risk_level"),
-                "sent_at": a.get("sent_at"),
-            }
-            for a in (recent_alerts.data or [])
+            {"message": a["message"], "risk_level": a.get("risk_level"), "sent_at": a.get("sent_at")}
+            for a in recent_alerts
         ],
     }
 
 
 def _get_chat_history(sb, user_id, channel, limit=10):
-    """Retrieve recent conversation messages for context."""
     result = (
         sb.table("messages")
         .select("role, content")
@@ -180,145 +266,106 @@ def _get_chat_history(sb, user_id, channel, limit=10):
         .limit(limit)
         .execute()
     )
-    # Reverse so oldest is first
-    messages = list(reversed(result.data)) if result.data else []
-    return messages
+    return list(reversed(result.data)) if result.data else []
 
 
-def _generate_response(message, context, history, channel):
-    """Call the LLM to generate a response, with fallback."""
+# ── Response generation ─────────────────────────────────────────────
+
+def _generate_response(message, context, goals_result, tradeoffs_result, history, channel):
     client = _get_openai_client()
     if client is None:
-        return _fallback_response(message, context)
+        return _fallback_response(message, context, goals_result, tradeoffs_result)
 
     length_hint = "Keep your response to 2-3 sentences." if channel == "sms" else "Keep your response to 3-5 sentences."
+    user = context.get("user", {})
 
-    context_prompt = f"""Current Financial Context:
-- Balance: ${context.get('total_balance', 0):,.2f}
-- Accounts: {len(context.get('accounts', []))}
-- Monthly income: ${context.get('user', {}).get('monthly_income') or 0:,.2f}
-- Monthly expenses target: ${context.get('user', {}).get('monthly_expenses') or 0:,.2f}
-- Savings goal: ${context.get('user', {}).get('savings_goal') or 0:,.2f}
-- Current savings: ${context.get('user', {}).get('current_savings') or 0:,.2f}
+    agent_context = f"""=== Financial Context ===
+Balance: ${context.get('total_balance', 0):,.2f}
+Monthly income: ${float(user.get('monthly_income') or 0):,.2f}
+Monthly expenses target: ${float(user.get('monthly_expenses') or 0):,.2f}
+Savings goal: ${float(user.get('savings_goal') or 0):,.2f}
+Current savings: ${float(user.get('current_savings') or 0):,.2f}
 
-Recent Transactions:
-{_format_transactions(context.get('recent_transactions', []))}
+Recent transactions:
+{_format_txns(context.get('recent_transactions', []))}
 
-Budgets:
-{_format_budgets(context.get('budgets', []))}
+=== Goals Agent Analysis ===
+Aligned: {goals_result.get('aligned', 'N/A')}
+{goals_result.get('analysis', 'No analysis.')}
 
-Latest Risk Assessment:
-{_format_risk(context.get('latest_risk'))}
+=== Tradeoffs Agent Analysis ===
+{tradeoffs_result.get('lowest_impact', '')}
 
-Recent Alerts:
-{_format_alerts(context.get('recent_alerts', []))}
+Alternatives:
+{chr(10).join('- ' + a for a in tradeoffs_result.get('alternatives', [])) or 'None'}
 
-{length_hint}"""
+Potential cuts:
+{chr(10).join(f"- {c['category']}: cut ${c['suggested_cut']:,.2f} from ${c['current_spend']:,.2f}" for c in tradeoffs_result.get('cuts', [])[:3]) or 'None identified'}
+
+=== Instructions ===
+{length_hint}
+Synthesize the above into a helpful response. Reference the goals and tradeoff analyses."""
 
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "system", "content": context_prompt},
+        {"role": "system", "content": agent_context},
     ]
-
-    # Add conversation history
     for msg in history:
         messages.append({"role": msg["role"], "content": msg["content"]})
-
-    # Add the current message
     messages.append({"role": "user", "content": message})
 
     try:
-        response = client.chat.completions.create(
+        resp = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=messages,
             max_tokens=300 if channel == "sms" else 500,
             temperature=0.7,
         )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        return _fallback_response(message, context)
+        return resp.choices[0].message.content.strip()
+    except Exception:
+        return _fallback_response(message, context, goals_result, tradeoffs_result)
 
 
 def _get_openai_client():
     global _client
     if _client is None:
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
+        key = os.getenv("OPENAI_API_KEY")
+        if not key:
             return None
-        _client = OpenAI(api_key=api_key)
+        _client = OpenAI(api_key=key)
     return _client
 
 
-# ── Fallback (no LLM) ──────────────────────────────────────────────
+# ── Fallbacks ───────────────────────────────────────────────────────
 
-def _fallback_response(message, context):
-    """Rule-based responses when the LLM is unavailable."""
-    msg_lower = message.lower()
+def _fallback_response(message, context, goals_result, tradeoffs_result):
     balance = context.get("total_balance", 0)
+    parts = [f"Your balance is ${balance:,.2f}."]
 
-    if "afford" in msg_lower or "can i" in msg_lower:
-        return (
-            f"Your current balance is ${balance:,.2f}. "
-            "Based on your recent spending patterns, I'd recommend keeping "
-            "non-essential purchases under $50 until your next income."
-        )
+    if goals_result and not goals_result.get("aligned", True):
+        parts.append("This conflicts with your financial goals.")
+    elif goals_result:
+        parts.append("This aligns with your current goals.")
 
-    if "alert" in msg_lower or "why" in msg_lower:
-        alerts = context.get("recent_alerts", [])
-        if alerts:
-            return f"Your most recent alert: {alerts[0]['message']}"
-        return "No recent alerts found."
+    alts = tradeoffs_result.get("alternatives", []) if tradeoffs_result else []
+    if alts:
+        parts.append(f"Alternative: {alts[0]}")
 
-    if "cut" in msg_lower or "save" in msg_lower or "reduce" in msg_lower:
-        risk = context.get("latest_risk")
-        if risk and risk.get("recommendations"):
-            return " ".join(risk["recommendations"][:2])
-        return "Review your recent transactions for recurring subscriptions or dining expenses you could reduce."
+    lowest = tradeoffs_result.get("lowest_impact", "") if tradeoffs_result else ""
+    if lowest:
+        parts.append(lowest)
 
-    if "balance" in msg_lower or "how much" in msg_lower:
-        return f"Your current total balance across all accounts is ${balance:,.2f}."
-
-    return (
-        f"Your balance is ${balance:,.2f}. "
-        "I can help with questions like 'Can I afford this?', "
-        "'What should I cut?', or 'Why did you alert me?'"
-    )
+    return " ".join(parts)
 
 
-# ── Formatting helpers ──────────────────────────────────────────────
-
-def _format_transactions(txns):
+def _format_txns(txns):
     if not txns:
-        return "No recent transactions"
-    lines = []
-    for t in txns[:10]:
-        desc = t.get("description") or "Unknown"
-        lines.append(f"- ${t['amount']:,.2f} {t['type']} — {desc} ({t.get('date', 'N/A')})")
-    return "\n".join(lines)
-
-
-def _format_budgets(budgets):
-    if not budgets:
-        return "No budgets set"
+        return "None"
     return "\n".join(
-        f"- {b['category']}: ${b.get('monthly_limit') or 0:,.2f}/month"
-        for b in budgets
+        f"- ${t['amount']:,.2f} {t['type']} — {t.get('description') or 'Unknown'}"
+        for t in txns[:8]
     )
 
 
-def _format_risk(risk):
-    if not risk:
-        return "No risk assessment available"
-    level = risk.get("risk_level") or risk.get("score", "N/A")
-    factors = risk.get("factors", [])
-    factor_text = "; ".join(f["detail"] for f in factors[:3]) if factors else "None"
-    return f"Score: {risk.get('score', 'N/A')}/100, Factors: {factor_text}"
-
-
-def _format_alerts(alerts):
-    if not alerts:
-        return "No recent alerts"
-    return "\n".join(
-        f"- [{a.get('risk_level', 'N/A')}] {a['message'][:100]}"
-        for a in alerts[:3]
-    )
+def _truncate(s, n):
+    return s[:n] + "..." if len(s) > n else s

@@ -1,0 +1,11 @@
+{
+  "dependencies": {
+    "@photon-ai/imessage-kit": "^2.1.2",
+    "better-sqlite3": "^12.8.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  }
+}
