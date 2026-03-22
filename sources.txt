@@ -1,0 +1,33 @@
+Project Sources and Attributions
+
+Last updated: 2026-03-22
+
+AI / Productivity Tools
+- Canva: https://www.canva.com/
+- Claude (Anthropic): https://claude.ai/ and https://www.anthropic.com/
+- Cursor: https://www.cursor.com/
+
+Core APIs and Platforms
+- Twilio (WhatsApp/SMS APIs): https://www.twilio.com/docs
+- OpenAI API: https://platform.openai.com/docs
+- Nessie API (Capital One Hackathon API): http://api.nessieisreal.com/
+- Supabase (database/auth/client APIs): https://supabase.com/docs
+
+Backend Libraries (Python)
+- Flask: https://flask.palletsprojects.com/
+- Flask-CORS: https://flask-cors.readthedocs.io/
+- Requests: https://requests.readthedocs.io/
+- python-dotenv: https://pypi.org/project/python-dotenv/
+- Twilio Python helper library: https://www.twilio.com/docs/libraries/python
+- OpenAI Python library: https://github.com/openai/openai-python
+- Supabase Python client: https://supabase.com/docs/reference/python/introduction
+- NumPy: https://numpy.org/
+
+Frontend / JS Libraries
+- Tailwind CSS (CDN): https://tailwindcss.com/docs/installation/play-cdn
+- Google Fonts (Inter, DM Serif Text): https://fonts.google.com/
+- TypeScript: https://www.typescriptlang.org/docs/
+- ts-node: https://typestrong.org/ts-node/
+- Node.js type definitions (@types/node): https://www.npmjs.com/package/@types/node
+- @photon-ai/imessage-kit: https://www.npmjs.com/package/@photon-ai/imessage-kit
+- better-sqlite3: https://www.npmjs.com/package/better-sqlite3
