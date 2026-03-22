@@ -46,6 +46,27 @@ h1 {
   color: #18181b;
 }
 
+h1.brand-heading {
+  font-size: 0;
+  line-height: 0;
+  margin-bottom: 0.75rem;
+}
+
+.brand-logo {
+  display: block;
+  height: 4.75rem;
+  width: auto;
+  max-width: 100%;
+  object-fit: contain;
+  object-position: left center;
+}
+
+@media (min-width: 640px) {
+  .brand-logo {
+    height: 5.5rem;
+  }
+}
+
 .subtitle {
   margin: 0 0 1rem;
   color: #52525b;

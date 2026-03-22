@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>BudgetLess</title>
+  <link rel="icon" href="assets/BudgetLess.webp" type="image/webp" />
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -39,7 +40,9 @@
   <!-- Compact top bar -->
   <header class="sticky top-0 z-30 border-b border-zinc-300 bg-zinc-100">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 py-2 flex items-center justify-between gap-4">
-      <h1 class="font-serif text-3xl sm:text-4xl font-normal tracking-tight text-zinc-900 shrink-0">BudgetLess</h1>
+      <a href="index.html" class="shrink-0 flex items-center py-1" aria-label="BudgetLess home">
+        <img src="assets/Budget-Transparent.webp" alt="BudgetLess" width="320" height="80" class="h-14 sm:h-[4.5rem] w-auto max-w-[min(320px,78vw)] object-contain object-left" />
+      </a>
       <button type="button" id="settings-trigger" onclick="openSettings()"
         class="shrink-0 p-2 rounded-none text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200 transition"
         aria-expanded="false" aria-haspopup="dialog" aria-label="Open settings">
@@ -115,29 +118,49 @@
 
   <main class="max-w-7xl mx-auto px-4 sm:px-6 py-5 flex flex-col gap-5 font-sans" style="height: calc(100vh - 52px);">
 
-    <!-- Transactions -->
-    <section class="bg-white text-zinc-900 rounded-lg border border-zinc-300 p-5 flex flex-col min-h-0 shadow-md" style="flex: 2.6;">
-      <div class="flex items-center justify-between mb-3">
-        <p class="font-sans text-lg font-semibold text-zinc-900">Transaction history</p>
-        <button type="button" onclick="loadTransactions()"
-          class="text-xs font-medium text-zinc-600 hover:text-zinc-900 transition flex items-center gap-1 font-sans">
-          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-          </svg>
-          Refresh
-        </button>
-      </div>
-      <div id="txn-list" class="flex-1 overflow-y-auto space-y-1 min-h-0">
-        <p class="text-sm text-zinc-500 py-8 text-center">Loading transactions...</p>
-      </div>
-    </section>
+    <!-- Transactions + active budgets -->
+    <div class="grid grid-cols-1 lg:grid-cols-5 gap-5 min-h-0" style="flex: 2.95;">
+      <section class="lg:col-span-3 bg-white text-zinc-900 rounded-lg border border-zinc-300 p-5 flex flex-col min-h-0 shadow-md">
+        <div class="flex items-center justify-between mb-3">
+          <p class="font-serif text-lg font-semibold text-zinc-900">Transactions</p>
+          <button type="button" onclick="refreshTransactionsAndActiveBudgets()"
+            class="text-xs font-medium text-zinc-600 hover:text-zinc-900 transition flex items-center gap-1 font-sans">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+            </svg>
+            Refresh
+          </button>
+        </div>
+        <div id="txn-list" class="flex-1 overflow-y-auto space-y-1 min-h-0">
+          <p class="text-sm text-zinc-500 py-8 text-center">Loading transactions...</p>
+        </div>
+      </section>
+
+      <section class="lg:col-span-2 bg-white text-zinc-900 rounded-lg border border-zinc-300 p-5 flex flex-col min-h-0 shadow-md">
+        <div class="flex items-center justify-between mb-3 shrink-0">
+          <p class="font-serif text-lg font-semibold text-zinc-900">Active budgets</p>
+          <button type="button" onclick="loadActiveBudgets()"
+            class="text-xs font-medium text-zinc-600 hover:text-zinc-900 transition flex items-center gap-1 font-sans">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+            </svg>
+            Refresh
+          </button>
+        </div>
+        <p class="text-xs text-zinc-500 mb-3 shrink-0">Periods that include today. Spending counts purchases whose category matches the budget.</p>
+        <div id="active-budgets-list" class="flex-1 overflow-y-auto space-y-4 min-h-0 pr-1">
+          <p class="text-sm text-zinc-500 py-4 text-center">Loading…</p>
+        </div>
+      </section>
+    </div>
 
     <!-- Chat + Reasoning -->
-    <section class="grid grid-cols-1 lg:grid-cols-5 gap-5 min-h-0" style="flex: 3.4;">
+    <section class="grid grid-cols-1 lg:grid-cols-5 gap-5 min-h-0" style="flex: 3.05;">
 
       <div class="lg:col-span-3 bg-white text-zinc-900 rounded-lg border border-zinc-300 p-5 flex flex-col min-h-0 shadow-md">
-        <p class="font-sans text-lg font-semibold text-zinc-900 mb-3">Chat</p>
+        <p class="font-serif text-lg font-semibold text-zinc-900 mb-3">Chat</p>
         <div id="chat-messages" class="chat-messages space-y-3 flex-1 overflow-y-auto mb-4 p-2 min-h-0 bg-zinc-100 rounded-none border border-zinc-200"></div>
         <form id="chat-form" class="flex gap-3 shrink-0">
           <input id="chat-input" type="text"
@@ -151,7 +174,7 @@
       </div>
 
       <div class="lg:col-span-2 bg-white text-zinc-900 rounded-lg border border-zinc-300 p-5 flex flex-col min-h-0 shadow-md">
-        <p class="font-sans text-lg font-semibold text-zinc-900 mb-3">Reasoning</p>
+        <p class="font-serif text-lg font-semibold text-zinc-900 mb-3">Reasoning</p>
         <div id="tool-calls-panel" class="space-y-3 flex-1 overflow-y-auto min-h-0 text-zinc-700">
           <p class="text-sm text-zinc-500 font-sans">Send a message to see how BudgetLess reasons and which tools it uses.</p>
         </div>

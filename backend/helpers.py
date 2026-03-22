@@ -1,4 +1,40 @@
+from datetime import datetime, timezone
+
 from db import get_supabase
+
+
+def _parse_ymd(s):
+    if not s:
+        return None
+    return datetime.strptime(str(s)[:10], "%Y-%m-%d").date()
+
+
+def _account_ids_for_user(sb, user_id):
+    accounts = sb.table("accounts").select("id").eq("user_id", user_id).execute()
+    return [a["id"] for a in (accounts.data or [])]
+
+
+def sum_category_spend(sb, account_ids, category, start_date, end_date, budget_account_id=None):
+    """Sum purchase amounts for category in date range (inclusive)."""
+    if not account_ids or not category:
+        return 0.0
+    ids = list(account_ids)
+    if budget_account_id and budget_account_id in ids:
+        ids = [budget_account_id]
+    elif budget_account_id:
+        return 0.0
+
+    result = (
+        sb.table("transactions")
+        .select("amount")
+        .in_("account_id", ids)
+        .eq("type", "purchase")
+        .eq("category", category)
+        .gte("transaction_date", start_date[:10])
+        .lte("transaction_date", end_date[:10])
+        .execute()
+    )
+    return sum(float(t.get("amount") or 0) for t in (result.data or []))
 
 
 def get_user_budgets(user_id):
@@ -16,6 +52,46 @@ def get_user_budgets(user_id):
         .execute()
     )
     return result.data or []
+
+
+def get_active_budgets_usage(user_id):
+    """Budgets whose period includes today (UTC), with spent vs limit."""
+    sb = get_supabase()
+    today = datetime.now(timezone.utc).date()
+    budgets = get_user_budgets(user_id)
+    account_ids = _account_ids_for_user(sb, user_id)
+    active = []
+
+    for b in budgets:
+        d0 = _parse_ymd(b.get("start_date"))
+        d1 = _parse_ymd(b.get("end_date"))
+        if not d0 or not d1 or d1 < d0:
+            continue
+        if not (d0 <= today <= d1):
+            continue
+
+        cat = (b.get("category") or "").strip()
+        if not cat:
+            continue
+
+        start_s = str(b.get("start_date"))[:10]
+        end_s = str(b.get("end_date"))[:10]
+        limit_amt = float(b.get("amount") or 0)
+        spent = sum_category_spend(sb, account_ids, cat, start_s, end_s, b.get("account_id"))
+
+        active.append({
+            "id": b.get("id"),
+            "category": cat,
+            "limit": limit_amt,
+            "spent": round(spent, 2),
+            "remaining": round(max(0.0, limit_amt - spent), 2),
+            "pct_used": round(spent / limit_amt, 4) if limit_amt > 0 else None,
+            "start_date": start_s,
+            "end_date": end_s,
+            "is_over": spent > limit_amt if limit_amt > 0 else False,
+        })
+
+    return {"active": active, "count": len(active)}
 
 
 def get_user_budgets_by_nessie_account(nessie_account_id):

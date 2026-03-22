@@ -74,8 +74,10 @@ def delete_account(id):
 def get_transactions(id):
     url = 'http://api.nessieisreal.com/accounts/{}/purchases'.format(id)
     response = query(url, {})
+    #print(response.json())
     if response.status_code == 200:
-        print('[debug] Queried transactions')
+        #print('[debug] Queried transactions')
+        return response.json()
     else:
         print(f'[debug] Failed to query transactions {[r for r in response]}')
     return response.json()

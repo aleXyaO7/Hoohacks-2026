@@ -4,6 +4,7 @@ const userId = localStorage.getItem("userId");
 if (!userId) window.location.href = "index.html";
 
 loadTransactions();
+loadActiveBudgets();
 
 // ── Settings popover ─────────────────────────────────────────────
 
@@ -108,6 +109,7 @@ async function deleteBudget(category) {
       return;
     }
     await loadBudgets();
+    await loadActiveBudgets();
   } catch {
     alert("Could not remove budget.");
   }
@@ -159,6 +161,7 @@ if (budgetForm) {
       budgetForm.reset();
       setDefaultBudgetFormDates();
       await loadBudgets();
+      await loadActiveBudgets();
     } catch {
       if (msgEl) {
         msgEl.textContent = "Network error.";
@@ -179,6 +182,72 @@ document.getElementById("chat-form").addEventListener("submit", (e) => {
   sendChat(text);
 });
 
+// ── Active budgets (current period + spend) ───────────────────────
+
+async function loadActiveBudgets() {
+  const container = document.getElementById("active-budgets-list");
+  if (!container) return;
+  try {
+    const resp = await fetch(`${API}/api/users/${userId}/budgets/active`);
+    const data = await resp.json();
+    if (!resp.ok) {
+      const msg = data && data.error ? String(data.error) : `Error ${resp.status}`;
+      container.innerHTML = `<p class="text-sm text-red-600 py-4 text-center font-sans">${esc(msg)}</p>`;
+      return;
+    }
+    const items = Array.isArray(data.active) ? data.active : [];
+    renderActiveBudgets(items);
+  } catch {
+    container.innerHTML =
+      '<p class="text-sm text-red-600 py-4 text-center font-sans">Could not load active budgets.</p>';
+  }
+}
+
+function renderActiveBudgets(items) {
+  const container = document.getElementById("active-budgets-list");
+  if (!container) return;
+  if (!items.length) {
+    container.innerHTML =
+      '<p class="text-sm text-zinc-500 py-6 text-center font-sans">No budgets active for today. Add one in Settings with dates that include today.</p>';
+    return;
+  }
+  container.innerHTML = "";
+  items.forEach((b) => {
+    const limit = Number(b.limit) || 0;
+    const spent = Number(b.spent) || 0;
+    const remaining = Number(b.remaining);
+    const pct =
+      limit > 0 ? Math.min(100, Math.round((spent / limit) * 1000) / 10) : 0;
+    const over = Boolean(b.is_over);
+    const barClass = over ? "bg-red-600" : "bg-zinc-800";
+    const barW = limit > 0 ? Math.min(100, (spent / limit) * 100) : 0;
+
+    const block = document.createElement("div");
+    block.className = "font-sans border border-zinc-200 rounded-md p-3 bg-zinc-50";
+    block.innerHTML = `
+      <div class="flex items-start justify-between gap-2 mb-2">
+        <p class="font-semibold text-zinc-900 truncate">${esc(b.category)}</p>
+        <span class="text-xs tabular-nums text-zinc-600 shrink-0">$${spent.toFixed(2)} / $${limit.toFixed(2)}</span>
+      </div>
+      <div class="h-2 bg-zinc-200 rounded-full overflow-hidden mb-2">
+        <div class="h-full rounded-full transition-all ${barClass}" style="width: ${barW}%"></div>
+      </div>
+      <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-zinc-600">
+        <span class="${over ? "text-red-600 font-semibold" : ""}">${over ? "Over budget" : `$${remaining.toFixed(2)} left`}</span>
+        <span class="text-zinc-400">·</span>
+        <span>${pct}% used</span>
+        <span class="text-zinc-400">·</span>
+        <span>${esc(b.start_date)} → ${esc(b.end_date)}</span>
+      </div>`;
+    container.appendChild(block);
+  });
+}
+
+async function refreshTransactionsAndActiveBudgets() {
+  await loadTransactions();
+  await loadActiveBudgets();
+}
+
 // ── Transactions ──────────────────────────────────────────────────
 
 function displayCategory(t, isDeposit) {
@@ -192,7 +261,7 @@ async function loadTransactions() {
   const container = document.getElementById("txn-list");
 
   try {
-    const resp = await fetch(`${API}/api/users/${userId}/transactions?limit=50`);
+    const resp = await fetch(`${API}/api/users/${userId}/transactions?limit=200`);
     const data = await resp.json();
 
     if (!resp.ok) {
