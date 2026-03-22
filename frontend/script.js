@@ -47,7 +47,7 @@ if (signinForm) {
       localStorage.setItem("userId", user.id);
       localStorage.setItem("userName", user.first_name);
 
-      message.textContent = "Welcome back! Redirecting...";
+      message.textContent = "Redirecting...";
       message.style.color = "#059669";
 
       setTimeout(() => {

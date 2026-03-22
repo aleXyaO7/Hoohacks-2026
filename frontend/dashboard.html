@@ -3,145 +3,161 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Financial Copilot</title>
+  <title>BudgetLess</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Text:ital@0;1&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <script>
     tailwind.config = {
-      theme: { extend: { fontFamily: { sans: ["Inter", "system-ui", "sans-serif"] } } }
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ["Inter", "system-ui", "sans-serif"],
+            serif: ['"DM Serif Text"', "Georgia", "serif"],
+          },
+        },
+      },
     };
   </script>
   <style>
-    /* Risk gauge arc */
-    .gauge-bg { stroke: #e5e7eb; }
-    .gauge-fill { transition: stroke-dashoffset 1.2s ease-out; stroke-linecap: round; }
-
-    /* Reasoning timeline animations */
-    .trace-step { opacity: 0; transform: translateY(12px); transition: opacity 0.4s ease, transform 0.4s ease; }
-    .trace-step.visible { opacity: 1; transform: translateY(0); }
-
-    /* Chat */
+    body { font-family: Inter, system-ui, sans-serif; }
+    .font-serif { font-family: "DM Serif Text", Georgia, serif; }
     .chat-messages { scrollbar-width: thin; }
     .chat-messages::-webkit-scrollbar { width: 6px; }
-    .chat-messages::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
+    .chat-messages::-webkit-scrollbar-thumb { background: #a1a1aa; border-radius: 0; }
     @keyframes pulse-dot { 0%, 80%, 100% { opacity: 0.3; } 40% { opacity: 1; } }
     .typing-dot { animation: pulse-dot 1.4s infinite; }
     .typing-dot:nth-child(2) { animation-delay: 0.2s; }
     .typing-dot:nth-child(3) { animation-delay: 0.4s; }
-
-    /* Detail expand */
-    .detail-body { max-height: 0; overflow: hidden; transition: max-height 0.3s ease; }
-    .detail-body.open { max-height: 600px; }
+    .tool-step { opacity: 0; transform: translateY(8px); transition: opacity 0.3s ease, transform 0.3s ease; }
+    .tool-step.visible { opacity: 1; transform: translateY(0); }
   </style>
 </head>
-<body class="bg-gray-50 font-sans text-gray-900 min-h-screen">
+<body class="bg-zinc-200 text-zinc-900 min-h-screen antialiased">
 
-  <!-- Header -->
-  <header class="bg-white border-b border-gray-200 sticky top-0 z-10">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
-      <div>
-        <h1 class="text-xl font-bold text-gray-900">Financial Copilot</h1>
-        <p id="header-greeting" class="text-sm text-gray-500"></p>
-      </div>
-      <div class="flex gap-3">
-        <button id="sync-btn" onclick="triggerPipeline()"
-          class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition flex items-center gap-2">
-          <svg id="sync-icon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-          </svg>
-          <span id="sync-text">Sync &amp; Analyze</span>
-        </button>
-        <button onclick="logout()"
-          class="border border-gray-300 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-50 transition">
-          Sign Out
-        </button>
-      </div>
+  <!-- Compact top bar -->
+  <header class="sticky top-0 z-30 border-b border-zinc-300 bg-zinc-100">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 py-2 flex items-center justify-between gap-4">
+      <h1 class="font-serif text-3xl sm:text-4xl font-normal tracking-tight text-zinc-900 shrink-0">BudgetLess</h1>
+      <button type="button" id="settings-trigger" onclick="openSettings()"
+        class="shrink-0 p-2 rounded-none text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200 transition"
+        aria-expanded="false" aria-haspopup="dialog" aria-label="Open settings">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+            d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+        </svg>
+      </button>
     </div>
   </header>
 
-  <main class="max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
-
-    <!-- Row 1: Two columns — Transactions | Risk Gauge + Reasoning -->
-    <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
-
-      <!-- LEFT: Transactions (2/5 width) -->
-      <div class="lg:col-span-2 bg-white rounded-xl border border-gray-200 p-6 flex flex-col">
-        <div class="flex items-center justify-between mb-4">
-          <p class="text-sm font-medium text-gray-500">Transactions</p>
-          <span id="balance-pill" class="text-sm font-semibold bg-gray-100 px-3 py-1 rounded-full">--</span>
-        </div>
-        <div id="transactions-list" class="space-y-1 overflow-y-auto flex-1" style="max-height: 540px;"></div>
-      </div>
-
-      <!-- RIGHT: Risk Gauge + Agent Reasoning (3/5 width) -->
-      <div class="lg:col-span-3 space-y-6">
-
-        <!-- Risk Gauge -->
-        <div class="bg-white rounded-xl border border-gray-200 p-6">
-          <div class="flex items-start justify-between">
-            <div>
-              <p class="text-sm font-medium text-gray-500 mb-1">Risk Assessment</p>
-              <div class="flex items-baseline gap-2">
-                <span id="risk-score" class="text-4xl font-bold tabular-nums">--</span>
-                <span class="text-gray-400 text-sm">/ 100</span>
-                <span id="risk-badge" class="ml-2 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-500">--</span>
-              </div>
-            </div>
-            <!-- SVG Gauge -->
-            <div class="relative w-28 h-16 flex-shrink-0">
-              <svg viewBox="0 0 120 68" class="w-full h-full">
-                <path d="M10 60 A50 50 0 0 1 110 60" fill="none" class="gauge-bg" stroke-width="10"/>
-                <path id="gauge-arc" d="M10 60 A50 50 0 0 1 110 60" fill="none"
-                  stroke="#d1d5db" stroke-width="10"
-                  stroke-dasharray="157" stroke-dashoffset="157"
-                  class="gauge-fill"/>
-              </svg>
-            </div>
-          </div>
-          <div id="risk-factors" class="mt-4 space-y-1.5"></div>
-        </div>
-
-        <!-- Agent Reasoning Timeline -->
-        <div class="bg-white rounded-xl border border-gray-200 p-6">
-          <p class="text-sm font-medium text-gray-500 mb-4">Agent Reasoning Loop</p>
-          <div id="reasoning-timeline" class="space-y-3">
-            <p class="text-sm text-gray-400">Click "Sync &amp; Analyze" to run the agent pipeline.</p>
-          </div>
-        </div>
-
-      </div>
+  <!-- Settings popover -->
+  <div id="settings-backdrop" class="hidden fixed inset-0 z-40 bg-black/50" onclick="closeSettings()" aria-hidden="true"></div>
+  <div id="settings-panel" role="dialog" aria-modal="true" aria-labelledby="settings-title"
+    class="hidden fixed z-50 top-14 right-4 w-[min(100vw-2rem,30rem)] max-h-[min(92vh,42rem)] overflow-y-auto rounded-lg border border-zinc-300 bg-white shadow-xl p-5">
+    <div class="flex items-center justify-between mb-4">
+      <h2 id="settings-title" class="font-serif text-xl text-zinc-900">Settings</h2>
+      <button type="button" onclick="closeSettings()" class="p-1.5 rounded-md text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100" aria-label="Close">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+        </svg>
+      </button>
     </div>
 
-    <!-- Row 2: Chat + Chat Reasoning -->
-    <div class="grid grid-cols-1 lg:grid-cols-5 gap-6">
+    <section class="mb-5 font-sans">
+      <h3 class="text-xs font-semibold uppercase tracking-wide text-zinc-500 mb-2">Budgets</h3>
+      <p class="text-xs text-zinc-600 mb-3">Add or update a spending limit by category (saved to your account).</p>
 
-      <!-- Chat (left, 2/5) -->
-      <div class="lg:col-span-2 bg-white rounded-xl border border-gray-200 p-6 flex flex-col">
-        <p class="text-sm font-medium text-gray-500 mb-4">Chat with your Financial Copilot</p>
-        <div id="chat-messages" class="chat-messages space-y-3 flex-1 overflow-y-auto mb-4 p-2" style="max-height: 360px;"></div>
-        <form id="chat-form" class="flex gap-3">
+      <form id="budget-form" class="space-y-2 mb-4">
+        <div>
+          <label for="budget-category" class="block text-xs font-medium text-zinc-600 mb-1">Category</label>
+          <input id="budget-category" type="text" required placeholder="e.g. food, transport"
+            class="w-full px-3 py-2 text-sm bg-white border border-zinc-300 text-zinc-900 rounded-md focus:outline-none focus:ring-2 focus:ring-zinc-300" />
+        </div>
+        <div>
+          <label for="budget-amount" class="block text-xs font-medium text-zinc-600 mb-1">Limit ($)</label>
+          <input id="budget-amount" type="number" step="0.01" min="0" required placeholder="0.00"
+            class="w-full px-3 py-2 text-sm bg-white border border-zinc-300 text-zinc-900 rounded-md focus:outline-none focus:ring-2 focus:ring-zinc-300" />
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label for="budget-start" class="block text-xs font-medium text-zinc-600 mb-1">Start</label>
+            <input id="budget-start" type="date" required
+              class="w-full px-2 py-2 text-sm bg-white border border-zinc-300 text-zinc-900 rounded-md focus:outline-none focus:ring-2 focus:ring-zinc-300" />
+          </div>
+          <div>
+            <label for="budget-end" class="block text-xs font-medium text-zinc-600 mb-1">End</label>
+            <input id="budget-end" type="date" required
+              class="w-full px-2 py-2 text-sm bg-white border border-zinc-300 text-zinc-900 rounded-md focus:outline-none focus:ring-2 focus:ring-zinc-300" />
+          </div>
+        </div>
+        <button type="submit"
+          class="w-full px-3 py-2.5 rounded-md text-sm font-medium text-white bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 transition">
+          Save budget
+        </button>
+      </form>
+      <p id="budget-form-message" class="text-xs mb-4 min-h-[1.25em] text-zinc-600" aria-live="polite"></p>
+
+      <h4 class="text-xs font-semibold uppercase tracking-wide text-zinc-500 mb-2">Budget history</h4>
+      <div id="budget-list" class="mb-2 space-y-0 border border-zinc-200 divide-y divide-zinc-200 min-h-[2.5rem] bg-zinc-50 rounded-md overflow-hidden">
+      </div>
+    </section>
+
+    <div class="border-t border-zinc-200 pt-4">
+      <p class="text-xs font-semibold uppercase tracking-wide text-zinc-500 mb-2 font-sans">Account</p>
+      <button type="button" onclick="logout()"
+        class="w-full font-sans text-left px-3 py-2.5 rounded-md text-sm font-medium text-white bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 transition">
+        Sign out
+      </button>
+    </div>
+  </div>
+
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 py-5 flex flex-col gap-5 font-sans" style="height: calc(100vh - 52px);">
+
+    <!-- Transactions -->
+    <section class="bg-white text-zinc-900 rounded-lg border border-zinc-300 p-5 flex flex-col min-h-0 shadow-md" style="flex: 2.6;">
+      <div class="flex items-center justify-between mb-3">
+        <p class="font-sans text-lg font-semibold text-zinc-900">Transaction history</p>
+        <button type="button" onclick="loadTransactions()"
+          class="text-xs font-medium text-zinc-600 hover:text-zinc-900 transition flex items-center gap-1 font-sans">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
+          Refresh
+        </button>
+      </div>
+      <div id="txn-list" class="flex-1 overflow-y-auto space-y-1 min-h-0">
+        <p class="text-sm text-zinc-500 py-8 text-center">Loading transactions...</p>
+      </div>
+    </section>
+
+    <!-- Chat + Reasoning -->
+    <section class="grid grid-cols-1 lg:grid-cols-5 gap-5 min-h-0" style="flex: 3.4;">
+
+      <div class="lg:col-span-3 bg-white text-zinc-900 rounded-lg border border-zinc-300 p-5 flex flex-col min-h-0 shadow-md">
+        <p class="font-sans text-lg font-semibold text-zinc-900 mb-3">Chat</p>
+        <div id="chat-messages" class="chat-messages space-y-3 flex-1 overflow-y-auto mb-4 p-2 min-h-0 bg-zinc-100 rounded-none border border-zinc-200"></div>
+        <form id="chat-form" class="flex gap-3 shrink-0">
           <input id="chat-input" type="text"
-            placeholder='"Can I afford dinner?", "What should I cut?"'
-            class="flex-1 border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+            placeholder='"Can I afford dinner?", "Show my transactions"'
+            class="flex-1 font-sans border border-zinc-300 rounded-none px-4 py-2.5 text-sm text-zinc-900 placeholder:text-zinc-500 bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-zinc-400 focus:border-transparent" />
           <button type="submit"
-            class="bg-blue-600 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-blue-700 transition whitespace-nowrap">
+            class="bg-zinc-800 text-white px-5 py-2.5 rounded-none text-sm font-medium hover:bg-zinc-700 transition whitespace-nowrap font-sans">
             Send
           </button>
         </form>
       </div>
 
-      <!-- Chat Reasoning (right, 3/5) -->
-      <div class="lg:col-span-3 bg-white rounded-xl border border-gray-200 p-6">
-        <p class="text-sm font-medium text-gray-500 mb-4">Chat Reasoning Loop</p>
-        <div id="chat-reasoning" class="space-y-3 max-h-[420px] overflow-y-auto">
-          <p class="text-sm text-gray-400">Send a message to see the agents reason through your question.</p>
+      <div class="lg:col-span-2 bg-white text-zinc-900 rounded-lg border border-zinc-300 p-5 flex flex-col min-h-0 shadow-md">
+        <p class="font-sans text-lg font-semibold text-zinc-900 mb-3">Reasoning</p>
+        <div id="tool-calls-panel" class="space-y-3 flex-1 overflow-y-auto min-h-0 text-zinc-700">
+          <p class="text-sm text-zinc-500 font-sans">Send a message to see how BudgetLess reasons and which tools it uses.</p>
         </div>
       </div>
 
-    </div>
-
+    </section>
   </main>
 
   <script src="dashboard.js"></script>
