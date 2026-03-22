@@ -3,10 +3,14 @@ from db import get_supabase
 
 transactions_bp = Blueprint("transactions", __name__)
 
+# Max rows returned for list endpoints (most recent first).
+MAX_TRANSACTIONS_LIMIT = 200
+
 
 @transactions_bp.route("/api/accounts/<account_id>/transactions", methods=["GET"])
 def list_transactions(account_id):
-    limit = request.args.get("limit", 50, type=int)
+    limit = request.args.get("limit", MAX_TRANSACTIONS_LIMIT, type=int)
+    limit = max(1, min(limit or MAX_TRANSACTIONS_LIMIT, MAX_TRANSACTIONS_LIMIT))
     category = request.args.get("category")
 
     try:
@@ -56,8 +60,9 @@ def record_transactions(account_id):
 
 @transactions_bp.route("/api/users/<user_id>/transactions", methods=["GET"])
 def list_user_transactions(user_id):
-    """Get all transactions across all accounts for a user."""
-    limit = request.args.get("limit", 100, type=int)
+    """Get recent transactions across all accounts for a user (newest first, capped)."""
+    limit = request.args.get("limit", MAX_TRANSACTIONS_LIMIT, type=int)
+    limit = max(1, min(limit or MAX_TRANSACTIONS_LIMIT, MAX_TRANSACTIONS_LIMIT))
 
     try:
         accounts = (

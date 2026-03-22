@@ -4,6 +4,7 @@ const userId = localStorage.getItem("userId");
 if (!userId) window.location.href = "index.html";
 
 loadTransactions();
+loadActiveBudgets();
 
 // ── Settings popover ─────────────────────────────────────────────
 
@@ -14,6 +15,7 @@ function openSettings() {
   if (t) t.setAttribute("aria-expanded", "true");
   setDefaultBudgetFormDates();
   loadBudgets();
+  loadUserPhoneIntoSettings();
 }
 
 function closeSettings() {
@@ -28,6 +30,63 @@ document.addEventListener("keydown", (e) => {
   const panel = document.getElementById("settings-panel");
   if (panel && !panel.classList.contains("hidden")) closeSettings();
 });
+
+// ── Phone (Settings, for WhatsApp alerts) ─────────────────────────
+
+async function loadUserPhoneIntoSettings() {
+  const input = document.getElementById("settings-phone");
+  if (!input) return;
+  try {
+    const resp = await fetch(`${API}/api/users/${userId}`);
+    const data = await resp.json();
+    if (resp.ok && data && data.phone) input.value = data.phone;
+  } catch { /* ignore */ }
+}
+
+const phoneForm = document.getElementById("phone-form");
+if (phoneForm) {
+  phoneForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const input = document.getElementById("settings-phone");
+    const msgEl = document.getElementById("phone-form-message");
+    const phone = input?.value.trim() || "";
+    if (!phone) {
+      if (msgEl) {
+        msgEl.textContent = "Enter a phone number.";
+        msgEl.className = "text-xs mt-2 min-h-[1.25em] text-red-600";
+      }
+      return;
+    }
+    if (msgEl) {
+      msgEl.textContent = "Saving…";
+      msgEl.className = "text-xs mt-2 min-h-[1.25em] text-zinc-600";
+    }
+    try {
+      const resp = await fetch(`${API}/api/users/${userId}/phone`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) {
+        if (msgEl) {
+          msgEl.textContent = data.error || "Save failed";
+          msgEl.className = "text-xs mt-2 min-h-[1.25em] text-red-600";
+        }
+        return;
+      }
+      if (msgEl) {
+        msgEl.textContent = "Saved. Refresh will send WhatsApp alerts to this number.";
+        msgEl.className = "text-xs mt-2 min-h-[1.25em] text-emerald-600";
+      }
+    } catch {
+      if (msgEl) {
+        msgEl.textContent = "Network error.";
+        msgEl.className = "text-xs mt-2 min-h-[1.25em] text-red-600";
+      }
+    }
+  });
+}
 
 // ── Budgets (Settings) ────────────────────────────────────────────
 
@@ -108,6 +167,7 @@ async function deleteBudget(category) {
       return;
     }
     await loadBudgets();
+    await loadActiveBudgets();
   } catch {
     alert("Could not remove budget.");
   }
@@ -159,6 +219,7 @@ if (budgetForm) {
       budgetForm.reset();
       setDefaultBudgetFormDates();
       await loadBudgets();
+      await loadActiveBudgets();
     } catch {
       if (msgEl) {
         msgEl.textContent = "Network error.";
@@ -179,6 +240,126 @@ document.getElementById("chat-form").addEventListener("submit", (e) => {
   sendChat(text);
 });
 
+// ── Active budgets (current period + spend) ───────────────────────
+
+async function loadActiveBudgets() {
+  const container = document.getElementById("active-budgets-list");
+  if (!container) return;
+  try {
+    const resp = await fetch(`${API}/api/users/${userId}/budgets/active`);
+    const data = await resp.json();
+    if (!resp.ok) {
+      const msg = data && data.error ? String(data.error) : `Error ${resp.status}`;
+      container.innerHTML = `<p class="text-sm text-red-600 py-4 text-center font-sans">${esc(msg)}</p>`;
+      return;
+    }
+    const items = Array.isArray(data.active) ? data.active : [];
+    renderActiveBudgets(items);
+  } catch {
+    container.innerHTML =
+      '<p class="text-sm text-red-600 py-4 text-center font-sans">Could not load active budgets.</p>';
+  }
+}
+
+function renderActiveBudgets(items) {
+  const container = document.getElementById("active-budgets-list");
+  if (!container) return;
+  if (!items.length) {
+    container.innerHTML =
+      '<p class="text-sm text-zinc-500 py-6 text-center font-sans">No budgets active for today. Add one in Settings with dates that include today.</p>';
+    return;
+  }
+  container.innerHTML = "";
+  items.forEach((b) => {
+    const limit = Number(b.limit) || 0;
+    const spent = Number(b.spent) || 0;
+    const remaining = Number(b.remaining);
+    const pct =
+      limit > 0 ? Math.min(100, Math.round((spent / limit) * 1000) / 10) : 0;
+    const over = Boolean(b.is_over);
+    const barClass = over ? "bg-red-600" : "bg-zinc-800";
+    const barW = limit > 0 ? Math.min(100, (spent / limit) * 100) : 0;
+
+    const block = document.createElement("div");
+    block.className = "font-sans border border-zinc-200 rounded-md p-3 bg-zinc-50";
+    block.innerHTML = `
+      <div class="flex items-start justify-between gap-2 mb-2">
+        <p class="font-semibold text-zinc-900 truncate">${esc(b.category)}</p>
+        <span class="text-xs tabular-nums text-zinc-600 shrink-0">$${spent.toFixed(2)} / $${limit.toFixed(2)}</span>
+      </div>
+      <div class="h-2 bg-zinc-200 rounded-full overflow-hidden mb-2">
+        <div class="h-full rounded-full transition-all ${barClass}" style="width: ${barW}%"></div>
+      </div>
+      <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-zinc-600">
+        <span class="${over ? "text-red-600 font-semibold" : ""}">${over ? "Over budget" : `$${remaining.toFixed(2)} left`}</span>
+        <span class="text-zinc-400">·</span>
+        <span>${pct}% used</span>
+        <span class="text-zinc-400">·</span>
+        <span>${esc(b.start_date)} → ${esc(b.end_date)}</span>
+      </div>`;
+    container.appendChild(block);
+  });
+}
+
+async function refreshDashboard() {
+  const checksEl = document.getElementById("budget-analytics-checks");
+  if (checksEl) {
+    checksEl.classList.remove("hidden");
+    checksEl.innerHTML =
+      '<p class="text-zinc-500 italic">Running budget checks…</p>';
+  }
+  try {
+    const resp = await fetch(`${API}/api/users/${userId}/dashboard/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (resp.ok) {
+      renderBudgetAnalyticsChecks(data);
+    } else if (checksEl) {
+      checksEl.innerHTML = `<p class="text-red-600">${esc(data.error || "Budget checks failed")}</p>`;
+    }
+  } catch {
+    if (checksEl) {
+      checksEl.innerHTML =
+        '<p class="text-red-600">Could not reach server for budget checks.</p>';
+    }
+  }
+  await loadTransactions();
+  await loadActiveBudgets();
+}
+
+function renderBudgetAnalyticsChecks(data) {
+  const el = document.getElementById("budget-analytics-checks");
+  if (!el) return;
+  const rows = Array.isArray(data.budget_analytics) ? data.budget_analytics : [];
+  if (!rows.length) {
+    el.innerHTML =
+      '<p class="text-zinc-500">No active budgets today — analytics checks skipped.</p>';
+    el.classList.remove("hidden");
+    return;
+  }
+  el.classList.remove("hidden");
+  el.innerHTML = rows
+    .map((r) => {
+      if (r.error) {
+        return `<p><span class="font-semibold">${esc(r.category)}</span>: <span class="text-red-600">${esc(r.error)}</span></p>`;
+      }
+      const over = r.check_budget_over === true;
+      const warn = r.check_budget_warnings === true;
+      let extra = "";
+      if (r.alert_sent) extra += ` · WhatsApp: ${esc(r.alert_sent)}`;
+      if (r.alert_skipped === "no_phone_on_user") {
+        extra += ` · <span class="text-amber-800">no phone on file — add one in Settings → WhatsApp alerts</span>`;
+      } else if (r.alert_skipped) {
+        extra += ` · ${esc(r.alert_skipped)}`;
+      }
+      if (r.alert_error) extra += ` · alert: <span class="text-amber-700">${esc(r.alert_error)}</span>`;
+      return `<p><span class="font-semibold">${esc(r.category)}</span>: over=${over}; warning=${warn}${extra}</p>`;
+    })
+    .join("");
+}
+
 // ── Transactions ──────────────────────────────────────────────────
 
 function displayCategory(t, isDeposit) {
@@ -192,7 +373,7 @@ async function loadTransactions() {
   const container = document.getElementById("txn-list");
 
   try {
-    const resp = await fetch(`${API}/api/users/${userId}/transactions?limit=50`);
+    const resp = await fetch(`${API}/api/users/${userId}/transactions?limit=200`);
     const data = await resp.json();
 
     if (!resp.ok) {
@@ -391,6 +572,15 @@ function summarizeResult(toolName, result) {
     }
     case "get_financial_summary": {
       return `Income: $${(result.monthly_income || 0).toLocaleString()}, Savings goal: $${(result.savings_goal || 0).toLocaleString()}`;
+    }
+    case "analyze_transaction_categories": {
+      const cats = result.categories || {};
+      const parts = Object.entries(cats).map(
+        ([k, v]) => `${k}: $${Number(v.sum || 0).toFixed(2)} (${v.count || 0} txns)`
+      );
+      const total = result.total_analyzed_spend;
+      const t = total != null ? `Total ~$${Number(total).toFixed(2)}` : "";
+      return parts.length ? `${parts.join(" · ")}${t ? ` — ${t}` : ""}` : "No purchases in range";
     }
     default:
       return "Completed";

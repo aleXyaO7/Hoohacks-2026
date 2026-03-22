@@ -16,6 +16,7 @@ from routes.snapshots import snapshots_bp
 from routes.alerts import alerts_bp
 from routes.messages import messages_bp
 from routes.sync import sync_bp
+from routes.dashboard import dashboard_bp
 
 PORT = 5001
 
@@ -48,6 +49,7 @@ def create_app():
     app.register_blueprint(alerts_bp)
     app.register_blueprint(messages_bp)
     app.register_blueprint(sync_bp)
+    app.register_blueprint(dashboard_bp)
 
     @app.route("/api/health", methods=["GET"])
     def health():

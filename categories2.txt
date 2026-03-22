@@ -1,0 +1,105 @@
+Monthly standard streaming subscription.;entertainment
+Purchased a high-end stand mixer or industrial blender.;miscellaneous
+Bought a gift set or loungewear from Victoria's Secret.;miscellaneous
+Purchased a new pair of dress slacks or a premium sweater.;miscellaneous
+A multi-course farm-to-table dinner for two.;food
+A spicy chicken deluxe meal with a large shake.;food
+Recurring monthly digital service fee.;miscellaneous
+A fresh seafood entrée with an appetizer and drink.;food
+A large specialty pizza and a side of garlic knots.;food
+A steak dinner with a Bloomin' Onion and a cocktail.;food
+A new ergonomic mouse or a fast-charging brick.;miscellaneous
+A Dave's Double combo meal with a Frosty.;food
+Monthly premium music streaming subscription.;entertainment
+Bought sunscreen, vitamins, or household essentials.;miscellaneous
+A single ticket to a major concert or sporting event.;entertainment
+Monthly residential rent payment.;rent/housing
+A large bag of specialty flour and decorative sprinkles.;food
+Monthly residential electricity utility bill.;rent/housing
+Purchased a pair of tactical boots or protective gear.;miscellaneous
+A fresh oyster platter and a round of drinks.;food
+A few small items from a mall kiosk or food court lunch.;food
+A premium wine-paired dinner experience.;food
+Standard vehicle maintenance (oil change and brake pad swap).;miscellaneous
+Monthly unlimited data cellular plan bill.;miscellaneous
+A digital game purchase or an Xbox Game Pass renewal.;entertainment
+A monthly fee for assigned parking or a storage unit.;rent/housing
+A lunch order of pork buns and steamed dumplings.;food
+A new hardcover release or a specialty coffee table book.;entertainment
+A regular-sized bowl of pasta with added protein.;food
+A new set of high-thread-count pillowcases.;miscellaneous
+Two medium pizzas and an order of wings for delivery.;food
+A weekly haul of groceries and fresh pantry staples.;food
+A professional cleaning and resizing of a piece of jewelry.;miscellaneous
+A double-meat burrito with extra guacamole and a drink.;food
+Monthly residential rent payment.;rent/housing
+A synthetic oil change and multi-point vehicle inspection.;miscellaneous
+A stainless steel whisk or a specialized vegetable peeler.;miscellaneous
+A Build Your Own Cravings Box.;food
+Organic chicken breasts, fresh berries, and almond milk.;food
+A 30-day supply of generic prescription medication.;miscellaneous
+A new cordless power drill or a set of mechanics' tools.;miscellaneous
+A full tank of regular unleaded gasoline.;miscellaneous
+A quick takeout lunch from a local vendor.;food
+A late-night munchie meal with tacos.;food
+A co-pay for a follow-up appointment or physical therapy.;miscellaneous
+A small travel accessory like an eye mask or neck pillow.;miscellaneous
+A 12oz ribeye dinner with sides and a house margarita.;food
+A new decorative throw pillow or kitchen towels.;miscellaneous
+A bottle of pure vanilla extract.;food
+Monthly standard streaming subscription.;entertainment
+A tire rotation and cabin air filter replacement.;miscellaneous
+A seasonal basket of fresh vegetables and local honey.;food
+A one-night stay in a standard king room.;rent/housing
+A catered lunch or event registration fee.;food
+A monthly subscription to a professional certificate program.;miscellaneous
+A bottle of multivitamins and a first-aid kit.;miscellaneous
+A pre-order for a new 'Triple-A' video game title.;entertainment
+A Big Mac Meal with a medium fries and drink.;food
+A scheduled monthly payment toward a credit card balance.;miscellaneous
+A seasonal venti latte with an extra espresso shot.;food
+A ream of paper and a pack of permanent markers.;miscellaneous
+A fresh-cut floral arrangement for a special occasion.;miscellaneous
+Monthly fee for the 200GB iCloud storage plan.;miscellaneous
+A medical lab test or a quick urgent care visit.;miscellaneous
+Two large slices of pizza and a fountain soda.;food
+Monthly premium music streaming subscription.;entertainment
+A digital song purchase or an ad-free app upgrade.;entertainment
+A specialty ramen bowl or an artisan bento box.;food
+A professional-grade chef's knife or carbon steel pan.;miscellaneous
+A new iPhone 15 Pro or a MacBook Air.;miscellaneous
+A Happy Meal or two cheeseburgers from the value menu.;food
+Enrollment in a verified university-level course.;miscellaneous
+A set of scented candles or a bathroom rug.;miscellaneous
+Monthly premium for auto insurance coverage.;miscellaneous
+Monthly premium music streaming subscription.;entertainment
+A ticket for a live local band or a cover charge.;entertainment
+A '3 for Me' meal with an extra appetizer and tip.;food
+A small fee for a replaced key fob or amenity pass.;rent/housing
+A custom engraved sterling silver bracelet.;miscellaneous
+Monthly basic streaming subscription (with ads).;entertainment
+A new heavy-duty winter parka or designer jacket.;miscellaneous
+A single-origin pour-over coffee.;food
+A digital rental of a newly released movie.;entertainment
+A heavy grocery shop including bulk snacks and frozen items.;food
+A lunch-special burger and a soda.;food
+A professional haircut and beard trim.;miscellaneous
+A quick lunch from the self-serve salad bar.;food
+A set of high-quality screwdrivers or a new wrench.;miscellaneous
+A gourmet burger with truffle fries.;food
+A 15-minute ride during off-peak hours.;miscellaneous
+A set of four heat-resistant ceramic baking dishes.;miscellaneous
+A tall cappuccino or a refreshing fruit refresher.;food
+A deposit for a two-night weekend cabin rental.;rent/housing
+A large drink or a cookie from the value menu.;food
+A Nachos BellGrande and a few specialty tacos.;food
+A bulk bag of high-quality fertilizer or animal feed.;miscellaneous
+A chicken burrito bowl with no extra sides.;food
+A club sandwich and a beer during a game.;food
+A signature salad or a flatbread sandwich.;food
+A one-night stay including the complimentary breakfast.;rent/housing
+Bought sunscreen, vitamins, or household essentials.;miscellaneous
+A seasonal basket of fresh vegetables and local honey.;food
+A pre-order for a new 'Triple-A' video game title.;entertainment
+A new heavy-duty winter parka or designer jacket.;miscellaneous
+A Big Mac Meal with a medium fries and drink.;food
