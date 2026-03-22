@@ -1,4 +1,4 @@
-from db import get_supabase
+from backend.db import get_supabase
 
 
 def get_user_budgets(user_id):
