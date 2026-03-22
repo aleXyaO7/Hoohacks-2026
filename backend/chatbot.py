@@ -23,6 +23,7 @@ from twilio.rest import Client
 from openai import OpenAI
 import os
 import json
+import threading
 
 app = Flask(__name__)
 
@@ -34,6 +35,28 @@ OPENAI_API_KEY         = os.environ.get("OPENAI_API_KEY", "PASTE_YOUR_OPENAI_KEY
 
 twilio_client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 openai_client = OpenAI(api_key=OPENAI_API_KEY)
+
+# Last inbound sender cache (for optional alert fallback)
+_last_inbound_sender_lock = threading.Lock()
+_last_inbound_sender = None
+
+
+def _set_last_inbound_sender(sender: str) -> None:
+    global _last_inbound_sender
+    with _last_inbound_sender_lock:
+        _last_inbound_sender = sender
+
+
+def _get_last_inbound_sender() -> str | None:
+    with _last_inbound_sender_lock:
+        return _last_inbound_sender
+
+
+def _normalize_whatsapp_to(to_phone: str) -> str:
+    to_phone = (to_phone or "").strip()
+    if to_phone.startswith("whatsapp:"):
+        return to_phone
+    return f"whatsapp:{to_phone}"
 
 # ── Helper: call GPT-4o-mini with a prompt ────────────────────────────────────
 def ask_openai(prompt: str, max_tokens: int = 300) -> str:
@@ -297,6 +320,9 @@ def incoming_message():
     sender       = request.form.get("From", "")
     user_message = request.form.get("Body", "").strip()
 
+    if sender:
+        _set_last_inbound_sender(sender)
+
     print(f"\n📱 [{sender}]: {user_message}")
 
     try:
@@ -319,31 +345,86 @@ def index():
 
 
 # ── Proactive alert ────────────────────────────────────────────────────────────
-def send_whatsapp_alert(to_phone: str, message: str):
+def send_whatsapp_alert(to_phone: str | None, message: str):
     """
     Push a WhatsApp message to a user proactively e.g. new transaction alert.
     to_phone: just the number e.g. "+15718881874"
     User must have joined the sandbox first.
     """
+    target = to_phone or _get_last_inbound_sender()
+    if not target:
+        raise ValueError(
+            "No destination phone available. Pass to_phone, or receive at least one inbound /sms first."
+        )
+
     twilio_client.messages.create(
         body=message,
         from_=TWILIO_WHATSAPP_NUMBER,
-        to=f"whatsapp:{to_phone}"
+        to=_normalize_whatsapp_to(target)
     )
-    print(f"📤 Alert sent to {to_phone}: {message}")
+    print(f"📤 Alert sent to {target}: {message}")
+
+def send_over_budget_alert(
+    to_phone: str | None,
+    merchant: str,
+    purchase_amount: float,
+    budget_limit: float,
+    category: str,
+):
+    """
+    Send a proactive WhatsApp alert when a purchase exceeds the recommended
+    budget for that category.
+
+    Args:
+        to_phone:        user's phone number e.g. "+15718881874"
+        merchant:        name of the merchant e.g. "Starbucks"
+        purchase_amount: how much the purchase was e.g. 52.40
+        budget_limit:    the recommended/set budget for this category e.g. 30.00
+        category:        spending category e.g. "food"
+
+    Example call:
+        send_over_budget_alert("+15718881874", "Starbucks", 52.40, 30.00, "food")
+    """
+    overage = purchase_amount - budget_limit
+
+    prompt = (
+        f"Write a short, friendly WhatsApp alert message telling the user that "
+        f"their recent purchase of ${purchase_amount:.2f} at {merchant} has exceeded "
+        f"their recommended {category} budget of ${budget_limit:.2f} by ${overage:.2f}. "
+        f"Suggest they be mindful of further spending in this category. "
+        f"Keep it to 2-3 sentences. Use 1 emoji. "
+        f"Use WhatsApp bold (*text*) for all dollar amounts and the merchant name."
+    )
+
+    message = ask_openai(prompt, max_tokens=150)
+
+    target = to_phone or _get_last_inbound_sender()
+    if not target:
+        raise ValueError(
+            "No destination phone available. Pass to_phone, or receive at least one inbound /sms first."
+        )
+
+    twilio_client.messages.create(
+        body=message,
+        from_=TWILIO_WHATSAPP_NUMBER,
+        to=_normalize_whatsapp_to(target)
+    )
+    print(f"📤 Over-budget alert sent to {target}: {message}")
 
 
 # ── Test route ─────────────────────────────────────────────────────────────────
 @app.route("/test-send")
 def test_send():
     to = request.args.get("to")
-    if not to:
-        return "Usage: /test-send?to=+1YOURNUMBER", 400
     try:
         send_whatsapp_alert(to, "👋 Hello from your WhatsApp FinanceBot!")
-        return f"✅ Sent to whatsapp:{to}", 200
+        destination = to or _get_last_inbound_sender()
+        return f"✅ Sent to {_normalize_whatsapp_to(destination)}", 200
     except Exception as e:
-        return f"❌ Failed: {e}", 500
+        return (
+            f"❌ Failed: {e}. Use /test-send?to=+1YOURNUMBER or send one inbound message first.",
+            500,
+        )
 
 
 if __name__ == "__main__":
