@@ -18,6 +18,25 @@ def get_user_budgets(user_id):
     return result.data or []
 
 
+def get_budget_by_id(budget_id, user_id=None):
+    """Return one budget row by its primary key ``id``.
+
+    Args:
+        budget_id: UUID (or str) of the ``budgets.id`` column.
+        user_id: If set, only return the row when it belongs to this user.
+
+    Returns:
+        A dict with the full budget row, or ``None`` if not found.
+    """
+    q = get_supabase().table("budgets").select("*").eq("id", budget_id).limit(1)
+    if user_id is not None:
+        q = q.eq("user_id", user_id)
+    result = q.execute()
+    if not result.data:
+        return None
+    return result.data[0]
+
+
 def get_transaction_history(user_id, limit=20):
     """Return recent transactions for a user across all their accounts.
 
